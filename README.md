@@ -1,6 +1,12 @@
 # sensevoice.axera
-FunASR SenseVoice on Axera
+FunASR SenseVoice on Axera, official repo: https://github.com/FunAudioLLM/SenseVoice
 
+## 功能
+ - 语音识别
+ - 自动识别语言
+ - 情感识别
+ - 自动标点
+ 
 ## 支持平台
 
 - [x] AX650N
