@@ -69,7 +69,8 @@ def unique_consecutive_np(x, dim=None, return_inverse=False, return_counts=False
 
 class SenseVoiceAx:
     def __init__(self, model_path, language="auto", use_itn=True, tokenizer=None):
-        model_path_root = os.path.dirname(model_path)
+        model_path_root = os.path.join(os.path.dirname(model_path), "..")
+        embedding_root = os.path.join(model_path_root, "embeddings")
         self.frontend = WavFrontend(cmvn_file=f"{model_path_root}/am.mvn",
                                     fs=16000, 
                                     window="hamming", 
@@ -90,10 +91,10 @@ class SenseVoiceAx:
         self.textnorm_int_dict = {25016: 14, 25017: 15}
         self.emo_dict = {"unk": 25009, "happy": 25001, "sad": 25002, "angry": 25003, "neutral": 25004}
 
-        self.position_encoding = np.load(f"{model_path_root}/position_encoding.npy")
-        language_query = np.load(f"{model_path_root}/{language}.npy")
-        textnorm_query = np.load(f"{model_path_root}/withitn.npy") if use_itn else np.load(f"{model_path_root}/woitn.npy")
-        event_emo_query = np.load(f"{model_path_root}/event_emo.npy")
+        self.position_encoding = np.load(f"{embedding_root}/position_encoding.npy")
+        language_query = np.load(f"{embedding_root}/{language}.npy")
+        textnorm_query = np.load(f"{embedding_root}/withitn.npy") if use_itn else np.load(f"{embedding_root}/woitn.npy")
+        event_emo_query = np.load(f"{embedding_root}/event_emo.npy")
         self.input_query = np.concatenate((textnorm_query, language_query, event_emo_query), axis=1)
         self.query_num = self.input_query.shape[1]
         self.masks = sequence_mask(np.array([self.max_len], dtype=np.int32), dtype=np.float32)

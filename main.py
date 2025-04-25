@@ -21,7 +21,7 @@ def main():
     use_itn = True # 标点符号预测
 
     model_path_root = download_model("SenseVoice")
-    model_path = os.path.join(model_path_root, "sensevoice.axmodel")
+    model_path = os.path.join(model_path_root, "sensevoice_ax650", "sensevoice.axmodel")
     bpemodel = os.path.join(model_path_root, "chn_jpn_yue_eng_ko_spectok.bpe.model")
 
     assert os.path.exists(model_path), f"model {model_path} not exist"

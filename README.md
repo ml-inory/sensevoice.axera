@@ -21,6 +21,7 @@ pip3 install -r requirements.txt
 
 ## 使用
 ```
+# 首次运行会自动从huggingface上下载模型, 保存到models中
 python3 main.py -i 输入音频文件
 ```
 运行参数说明:  
