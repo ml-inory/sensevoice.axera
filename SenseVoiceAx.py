@@ -19,6 +19,8 @@ def sequence_mask(lengths, maxlen=None, dtype=np.float32):
     
     # 比较生成掩码
     mask = row_vector < matrix
+    if mask.shape[-1] < lengths[0]:
+        mask = np.concatenate([mask, np.zeros((mask.shape[0], lengths[0] - mask.shape[-1]), dtype=np.float32)], axis=-1)
     
     # 返回指定数据类型的掩码
     return mask.astype(dtype)[None, ...]
@@ -83,7 +85,7 @@ class SenseVoiceAx:
         self.sample_rate = 16000
         self.tokenizer = tokenizer
         self.blank_id = 0
-        self.max_len = 34
+        self.max_len = 68
 
         self.lid_dict = {"auto": 0, "zh": 3, "en": 4, "yue": 7, "ja": 11, "ko": 12, "nospeech": 13}
         self.lid_int_dict = {24884: 3, 24885: 4, 24888: 7, 24892: 11, 24896: 12, 24992: 13}
@@ -97,7 +99,6 @@ class SenseVoiceAx:
         event_emo_query = np.load(f"{embedding_root}/event_emo.npy")
         self.input_query = np.concatenate((textnorm_query, language_query, event_emo_query), axis=1)
         self.query_num = self.input_query.shape[1]
-        self.masks = sequence_mask(np.array([self.max_len], dtype=np.int32), dtype=np.float32)
 
     def load_data(self, filepath: str) -> np.ndarray:
         waveform, _ = librosa.load(filepath, sr=self.sample_rate)
@@ -152,16 +153,18 @@ class SenseVoiceAx:
             sub_feat = feat[:, i*slice_len:(i+1)*slice_len, :]
             # concat query
             sub_feat = np.concatenate([self.input_query, sub_feat], axis=1)
-
-            if sub_feat.shape[1] < self.max_len:
+            real_len = sub_feat.shape[1]
+            if real_len < self.max_len:
                 sub_feat = np.concatenate([
                         sub_feat, 
-                        np.zeros((1, self.max_len - sub_feat.shape[1], sub_feat.shape[-1]), dtype=np.float32)
+                        np.zeros((1, self.max_len - real_len, sub_feat.shape[-1]), dtype=np.float32)
                     ],
                     axis=1)
                 
+            masks = sequence_mask(np.array([self.max_len], dtype=np.int32), maxlen=real_len, dtype=np.float32)
+
             outputs = self.model.run(None, {"speech": sub_feat,
-                                            "masks": self.masks,
+                                            "masks": masks,
                                             "position_encoding": self.position_encoding})
             ctc_logits, encoder_out_lens = outputs
 

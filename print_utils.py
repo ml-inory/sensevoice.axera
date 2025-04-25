@@ -116,6 +116,14 @@ def rich_transcription_postprocess(s):
     new_s = new_s.replace("The.", " ")
     return new_s.strip()
 
-def rich_print_asr_res(asr_res):
+def rich_print_asr_res(asr_res, will_print=True, remove_punc=False):
     res = "".join([rich_transcription_postprocess(i) for i in asr_res])
-    print(res)
+
+    if remove_punc:
+        res = res.replace("，", "")
+        res = res.replace("。", "")
+
+    if will_print:
+        print(res)
+
+    return res
