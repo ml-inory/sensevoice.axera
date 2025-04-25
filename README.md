@@ -3,7 +3,7 @@ FunASR SenseVoice on Axera, official repo: https://github.com/FunAudioLLM/SenseV
 
 ## 功能
  - 语音识别
- - 自动识别语言
+ - 自动识别语言(支持中文、英文、粤语、日语、韩语)
  - 情感识别
  - 自动标点
  
