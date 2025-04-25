@@ -15,7 +15,7 @@ pip3 install -r requirements.txt
 
 ## 使用
 ```
-python main.py -i 输入音频文件
+python3 main.py -i 输入音频文件
 ```
 运行参数说明:  
 | 参数名称 | 说明 | 默认值 |
@@ -29,7 +29,7 @@ example下有测试音频
 
 如 粤语测试
 ```
-python main.py -i example/yue.mp3
+python3 main.py -i example/yue.mp3
 ```
 输出
 ```
