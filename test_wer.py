@@ -19,7 +19,7 @@ def main():
 
     dataset = args.dataset
     language = args.language
-    use_itn = True # 标点符号预测
+    use_itn = False # 标点符号预测
 
     model_path_root = download_model("SenseVoice")
     model_path = os.path.join(model_path_root, "sensevoice_ax650", "sensevoice.axmodel")
@@ -51,8 +51,8 @@ def main():
     for wav_name, reference in zip(wav_names, references):
         wav_path = os.path.join(dataset, "aishell_S0764", wav_name + ".wav")
 
-        asr_res = pipeline.infer(wav_path, print_rtf=True)
-        hypothesis = rich_print_asr_res(asr_res, will_print=False, remove_punc=False)
+        asr_res = pipeline.infer(wav_path, print_rtf=False)
+        hypothesis = rich_print_asr_res(asr_res, will_print=False, remove_punc=True)
         hyp.append(hypothesis)
 
         wer = jiwer.cer(

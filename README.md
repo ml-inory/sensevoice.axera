@@ -44,6 +44,19 @@ RTF: 0.03026517820946964    Latency: 0.15689468383789062s  Total length: 5.184s
 ['呢几个字。', '都表达唔到，我想讲嘅意。', '思。']
 ```
 
+## 准确率
+
+使用WER(Word-Error-Rate)作为评价标准  
+
+**WER = 0.0389**  
+
+### 复现测试结果
+
+```
+./download_datasets.sh
+python test_wer.py -d datasets -l zh
+```
+
 ## 技术讨论
 
 - Github issues

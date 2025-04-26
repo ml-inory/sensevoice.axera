@@ -5,6 +5,7 @@ from frontend import WavFrontend
 import os
 import time
 from typing import Any, Dict, Iterable, List, NamedTuple, Set, Tuple, Union
+from print_utils import rich_transcription_postprocess
 
 def sequence_mask(lengths, maxlen=None, dtype=np.float32):
     # 如果 maxlen 未指定，则取 lengths 中的最大值
@@ -69,6 +70,35 @@ def unique_consecutive_np(x, dim=None, return_inverse=False, return_counts=False
     
     return results[0] if len(results) == 1 else results
 
+
+def longest_common_suffix_prefix_with_tolerance(
+    lhs, 
+    rhs, 
+    tolerate: int = 0
+) -> int:
+    """
+    计算两个数组的最长公共子序列，该子序列必须同时满足：
+    - 是 lhs 的后 n 个元素（后缀）
+    - 是 rhs 的前 n 个元素（前缀）
+    并且允许最多 `tolerate` 个元素不匹配。
+
+    参数:
+        lhs: np.ndarray, 第一个数组
+        rhs: np.ndarray, 第二个数组
+        tolerate: int, 允许的不匹配元素数量（默认为 0，即完全匹配）
+
+    返回:
+        int: 最长公共后缀/前缀的长度（如果没有则返回 0）
+    """
+    max_possible_n = min(len(lhs), len(rhs))
+    
+    for n in range(max_possible_n, 0, -1):
+        mismatches = np.sum(lhs[-n:] != rhs[:n])
+        if mismatches <= tolerate:
+            return n
+    
+    return 0
+
 class SenseVoiceAx:
     def __init__(self, model_path, language="auto", use_itn=True, tokenizer=None):
         model_path_root = os.path.join(os.path.dirname(model_path), "..")
@@ -86,6 +116,7 @@ class SenseVoiceAx:
         self.tokenizer = tokenizer
         self.blank_id = 0
         self.max_len = 68
+        self.padding = 16
 
         self.lid_dict = {"auto": 0, "zh": 3, "en": 4, "yue": 7, "ja": 11, "ko": 12, "nospeech": 13}
         self.lid_int_dict = {24884: 3, 24885: 4, 24888: 7, 24892: 11, 24896: 12, 24992: 13}
@@ -149,8 +180,12 @@ class SenseVoiceAx:
         slice_num = int(np.ceil(feat.shape[1] / slice_len))
 
         asr_res = []
+        prev_token_int = None
         for i in range(slice_num):
-            sub_feat = feat[:, i*slice_len:(i+1)*slice_len, :]
+            if i == 0:
+                sub_feat = feat[:, i*slice_len:(i+1)*slice_len, :]
+            else:
+                sub_feat = feat[:, i*slice_len - self.padding:(i+1)*slice_len - self.padding, :]
             # concat query
             sub_feat = np.concatenate([self.input_query, sub_feat], axis=1)
             real_len = sub_feat.shape[1]
@@ -169,10 +204,17 @@ class SenseVoiceAx:
             ctc_logits, encoder_out_lens = outputs
 
             token_int = self.postprocess(ctc_logits, encoder_out_lens)
-            if self.tokenizer is not None:
-                asr_res.append(self.tokenizer.tokens2text(token_int))
-            else:
-                asr_res.append(token_int)
+
+            # common prefix
+            if self.padding > 0 and prev_token_int is not None:
+                # prefix_len = common_prefix_len(prev_token_int, token_int)
+                prefix_len = longest_common_suffix_prefix_with_tolerance(prev_token_int, token_int, 6)
+                common_prefix = rich_transcription_postprocess(self.tokenizer.tokens2text(token_int[:prefix_len]))
+
+                asr_res[-1] = asr_res[-1][:-len(common_prefix)]
+            prev_token_int = np.copy(token_int)
+
+            asr_res.append(self.tokenizer.tokens2text(token_int))
 
         return asr_res
     
