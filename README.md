@@ -1,6 +1,12 @@
 # sensevoice.axera
 FunASR SenseVoice on Axera, official repo: https://github.com/FunAudioLLM/SenseVoice
 
+## TODO
+
+- [ ] 支持AX630C
+- [ ] 支持C++
+- [ ] 支持FastAPI
+
 ## 功能
  - 语音识别
  - 自动识别语言(支持中文、英文、粤语、日语、韩语)
@@ -56,6 +62,10 @@ RTF: 0.03026517820946964    Latency: 0.15689468383789062s  Total length: 5.184s
 ./download_datasets.sh
 python test_wer.py -d datasets -l zh
 ```
+
+## 模型转换
+
+参考[model_convert](model_convert/README.md)
 
 ## 技术讨论
 
