@@ -100,7 +100,7 @@ def longest_common_suffix_prefix_with_tolerance(
     return 0
 
 class SenseVoiceAx:
-    def __init__(self, model_path, language="auto", use_itn=True, tokenizer=None):
+    def __init__(self, model_path, max_len=68, language="auto", use_itn=True, tokenizer=None):
         model_path_root = os.path.join(os.path.dirname(model_path), "..")
         embedding_root = os.path.join(model_path_root, "embeddings")
         self.frontend = WavFrontend(cmvn_file=f"{model_path_root}/am.mvn",
@@ -115,7 +115,7 @@ class SenseVoiceAx:
         self.sample_rate = 16000
         self.tokenizer = tokenizer
         self.blank_id = 0
-        self.max_len = 68
+        self.max_len = max_len
         self.padding = 16
 
         self.lid_dict = {"auto": 0, "zh": 3, "en": 4, "yue": 7, "ja": 11, "ko": 12, "nospeech": 13}

@@ -19,6 +19,7 @@ def main():
     input_audio = args.input
     language = args.language
     use_itn = True # 标点符号预测
+    max_len = 68
 
     model_path_root = download_model("SenseVoice")
     model_path = os.path.join(model_path_root, "sensevoice_ax650", "sensevoice.axmodel")
@@ -32,7 +33,11 @@ def main():
     print(f"model_path: {model_path}")
 
     tokenizer = SentencepiecesTokenizer(bpemodel=bpemodel)
-    pipeline = SenseVoiceAx(model_path, language, use_itn, tokenizer=tokenizer)
+    pipeline = SenseVoiceAx(model_path, 
+                            max_len=max_len,
+                            language=language, 
+                            use_itn=use_itn, 
+                            tokenizer=tokenizer)
     asr_res = pipeline.infer(input_audio, print_rtf=True)
     print([rich_transcription_postprocess(i) for i in asr_res])
     # rich_print_asr_res(asr_res)
