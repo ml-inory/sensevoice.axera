@@ -125,11 +125,28 @@ class SenseVoiceAx:
         self.emo_dict = {"unk": 25009, "happy": 25001, "sad": 25002, "angry": 25003, "neutral": 25004}
 
         self.position_encoding = np.load(f"{embedding_root}/position_encoding.npy")
-        language_query = np.load(f"{embedding_root}/{language}.npy")
-        textnorm_query = np.load(f"{embedding_root}/withitn.npy") if use_itn else np.load(f"{embedding_root}/woitn.npy")
-        event_emo_query = np.load(f"{embedding_root}/event_emo.npy")
-        self.input_query = np.concatenate((textnorm_query, language_query, event_emo_query), axis=1)
+        self.language_query = np.load(f"{embedding_root}/{language}.npy")
+        self.textnorm_query = np.load(f"{embedding_root}/withitn.npy") if use_itn else np.load(f"{embedding_root}/woitn.npy")
+        self.event_emo_query = np.load(f"{embedding_root}/event_emo.npy")
+        self.input_query = np.concatenate((self.textnorm_query, self.language_query, self.event_emo_query), axis=1)
         self.query_num = self.input_query.shape[1]
+
+        self.model_path_root = model_path_root
+        self.embedding_root = embedding_root
+        self.language = language
+
+    @property
+    def language_options(self):
+        return list(self.lid_dict.keys())
+    
+    @property
+    def textnorm_options(self):
+        return list(self.textnorm_dict.keys())
+    
+    def choose_language(self, language):
+        self.language_query = np.load(f"{self.embedding_root}/{language}.npy")
+        self.input_query = np.concatenate((self.textnorm_query, self.language_query, self.event_emo_query), axis=1)
+        self.language = language
 
     def load_data(self, filepath: str) -> np.ndarray:
         waveform, _ = librosa.load(filepath, sr=self.sample_rate)
@@ -173,7 +190,10 @@ class SenseVoiceAx:
 
         return token_int
     
-    def infer_waveform(self, waveform: np.ndarray):
+    def infer_waveform(self, waveform: np.ndarray, language="auto"):
+        if language != self.language:
+            self.choose_language(language)
+
         feat, feat_len = self.preprocess(waveform)
 
         slice_len = self.max_len - self.query_num
@@ -218,7 +238,7 @@ class SenseVoiceAx:
 
         return asr_res
     
-    def infer(self, filepath_or_data: Union[np.ndarray, str], print_rtf=True):
+    def infer(self, filepath_or_data: Union[np.ndarray, str], language="auto", print_rtf=True):
         if isinstance(filepath_or_data, str):
             waveform = self.load_data(filepath_or_data)
         else:
@@ -227,7 +247,7 @@ class SenseVoiceAx:
         total_time = waveform.shape[-1] / self.sample_rate
 
         start = time.time()
-        asr_res = self.infer_waveform(waveform)
+        asr_res = self.infer_waveform(waveform, language)
         latency = time.time() - start
 
         if print_rtf:
