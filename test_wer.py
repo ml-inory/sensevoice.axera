@@ -108,13 +108,13 @@ def main():
 
     assert os.path.exists(model_path), f"model {model_path} not exist"
 
-    print(f"dataset: {dataset}")
-    print(f"language: {language}")
-    print(f"use_itn: {use_itn}")
-    print(f"model_path: {model_path}")
+    logger.info(f"dataset: {dataset}")
+    logger.info(f"language: {language}")
+    logger.info(f"use_itn: {use_itn}")
+    logger.info(f"model_path: {model_path}")
 
     tokenizer = SentencepiecesTokenizer(bpemodel=bpemodel)
-    pipeline = SenseVoiceAx(model_path, language, use_itn, tokenizer=tokenizer)
+    pipeline = SenseVoiceAx(model_path, language=language, use_itn=use_itn, tokenizer=tokenizer)
 
     # Load dataset
     wav_names = []
