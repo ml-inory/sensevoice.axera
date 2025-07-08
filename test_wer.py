@@ -254,7 +254,6 @@ def main():
         references.append(reference)
         
         line_content = f"({n+1}/{max_data_num}) {os.path.basename(audio_path)}  gt: {reference}  predict: {hypothesis}  WER: {character_error_rate}%"
-        wer_file.write(line_content + "\n")
         logger.info(line_content)
 
         if n + 1 >= max_data_num:
