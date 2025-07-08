@@ -28,6 +28,8 @@ position_encoding = embed.get_position_encoding(torch.randn(1, seq_len, 560)).nu
 
 rebuilt_model = model.export(type="onnx", quantize=False)
 model_path = "./output_dir"
+kwargs["output_dir"] = model_path
+os.makedirs(model_path, exist_ok=True)
 origin_model_path = os.path.dirname(kwargs.get("init_param"))
 shutil.copy(os.path.join(origin_model_path, "config.yaml"), model_path)
 shutil.copy(os.path.join(origin_model_path, "chn_jpn_yue_eng_ko_spectok.bpe.model"), model_path)
