@@ -35,7 +35,7 @@
           // }
       ],
       "calibration_method": "MinMax",
-      // "enable_smooth_quant": true,
+      "enable_smooth_quant": true,
       "conv_bias_data_type": "FP32",
       "disable_auto_refine_scale": true,
       "precision_analysis": true,

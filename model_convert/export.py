@@ -12,6 +12,7 @@ from funasr.utils.postprocess_utils import rich_transcription_postprocess
 import torchaudio
 import numpy as np
 import shutil
+import tarfile
 
 torchaudio.set_audio_backend("sox_io")
 
@@ -57,41 +58,60 @@ except:
     tokenizer = None
 
 # inference
-wav_or_scp = "../example/yue.mp3"
-language_list = [0]
-textnorm_list = [14]
+en_list = ["../example/en.mp3"]
+ja_list = ["../example/ja.mp3"]
+ko_list = ["../example/ko.mp3"]
+yue_list = ["../example/yue.mp3"]
+zh_list = ["../example/zh.mp3"]
+data_dir = {
+    "en": en_list,
+    "ja": ja_list,
+    "ko": ko_list,
+    "yue": yue_list,
+    "zh": zh_list,
+    "auto": en_list + ja_list + ko_list + yue_list + zh_list
+}
 
 with torch.no_grad():
-    language = torch.LongTensor(language_list).to(model.device)
-    textnorm = torch.LongTensor(textnorm_list).to(model.device)
-
-    language_query = model.embed(language.to(model.device)).unsqueeze(1)
-    textnorm_query = model.embed(textnorm.to(model.device)).unsqueeze(1)
-
-    # speech = torch.cat((textnorm_query, speech), dim=1)
-    # speech_lengths += 1
-
-    event_emo_query = model.embed(torch.LongTensor([[1, 2]]).to(model.device)).repeat(
-        1, 1, 1
-    )
-    # textnorm language event_emo speech
-    input_query = torch.cat((textnorm_query, language_query, event_emo_query), dim=1)
-    # speech = torch.cat((input_query, speech), dim=1)
-    # speech_lengths += 3
-
-    res = model_bin(wav_or_scp, input_query.numpy(), position_encoding, tokenizer=tokenizer)
-    print([rich_transcription_postprocess(i) for i in res])
-
-
     for language, value in model.lid_dict.items():
         language_query = model.embed(torch.LongTensor([value])).unsqueeze(1)
         language_query = language_query.numpy()
-        np.save(f"output_dir/{language}.npy", language_query)
+        np.save(f"{model_path}/{language}.npy", language_query)
 
     for textnorm, value in model.textnorm_dict.items():
         textnorm_query = model.embed(torch.LongTensor([value])).unsqueeze(1)
         textnorm_query = textnorm_query.numpy()
-        np.save(f"output_dir/{textnorm}.npy", textnorm_query)
+        np.save(f"{model_path}/{textnorm}.npy", textnorm_query)
 
-    np.save(f"output_dir/event_emo.npy", event_emo_query.numpy())
-    np.save("output_dir/position_encoding.npy", position_encoding)
+    event_emo_query = model.embed(torch.LongTensor([[1, 2]]).to(model.device)).repeat(
+        1, 1, 1
+    )
+    np.save(f"{model_path}/event_emo.npy", event_emo_query.numpy())
+    np.save(f"{model_path}/position_encoding.npy", position_encoding)
+
+
+    dataset = "dataset"
+    os.makedirs(dataset, exist_ok=True)
+    speech_dir = os.path.join(dataset, "speech")
+    mask_dir = os.path.join(dataset, "masks")
+    pe_dir = os.path.join(dataset, "position_encoding")
+
+    tf_speech = tarfile.open(f"{dataset}/speech.tar.gz", "w:gz")
+    tf_masks = tarfile.open(f"{dataset}/masks.tar.gz", "w:gz")
+    tf_pe = tarfile.open(f"{dataset}/position_encoding.tar.gz", "w:gz")
+
+    for withitn in [True, False]:
+        for language in data_dir.keys():
+            for wav_file in data_dir[language]:
+                res = model_bin(wav_file, language, withitn, position_encoding, tokenizer=tokenizer)
+                print(wav_file)
+                print([rich_transcription_postprocess(i) for i in res])
+                print("\n")
+
+    tf_speech.add(speech_dir)
+    tf_masks.add(mask_dir)
+    tf_pe.add(pe_dir)
+
+    tf_speech.close()
+    tf_masks.close()
+    tf_pe.close()
