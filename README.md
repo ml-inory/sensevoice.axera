@@ -60,7 +60,7 @@ RTF: 0.03026517820946964    Latency: 0.15689468383789062s  Total length: 5.184s
 
 ```
 ./download_datasets.sh
-python test_wer.py -d datasets -l zh
+python test_wer.py -d aishell -g datasets/ground_truth.txt --language zh
 ```
 
 ## 模型转换
