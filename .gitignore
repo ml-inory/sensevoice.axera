@@ -4,3 +4,4 @@ models
 /model_convert/output_dir
 datasets
 axmodel
+test_wer.log
