@@ -124,6 +124,7 @@ class MultiHeadedAttentionSANM(nn.Module):
             left_padding = left_padding + sanm_shfit
         right_padding = kernel_size - 1 - left_padding
         self.pad_fn = nn.ConstantPad1d((left_padding, right_padding), 0.0)
+        self.padding = [left_padding, right_padding]
 
     def forward_fsmn(self, inputs, mask, mask_shfit_chunk=None):
         b, t, d = inputs.size()
@@ -134,7 +135,15 @@ class MultiHeadedAttentionSANM(nn.Module):
             inputs = inputs * mask
 
         x = inputs.transpose(1, 2)
-        x = self.pad_fn(x)
+        # x = self.pad_fn(x)
+        # ==== EDIT ====
+        if self.padding[0] > 0:
+            padding = torch.zeros(x.shape[0], x.shape[1], self.padding[0])
+            x = torch.cat([padding, x], dim=-1)
+        if self.padding[1] > 0:
+            padding = torch.zeros(x.shape[0], x.shape[1], self.padding[1])
+            x = torch.cat([x, padding], dim=-1)
+
         x = self.fsmn_block(x)
         x = x.transpose(1, 2)
         x += inputs

@@ -5,3 +5,4 @@ librosa==0.9.1
 sentencepiece
 fastapi
 gradio
+emoji

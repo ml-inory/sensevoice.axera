@@ -38,6 +38,7 @@ def _onnx(
     dummy_input = model.export_dummy_inputs()
 
     verbose = kwargs.get("verbose", False)
+    is_dyamic = kwargs.get("is_dynamic", False)
 
     export_name = model.export_name()
     model_path = os.path.join(export_dir, export_name)
@@ -47,9 +48,11 @@ def _onnx(
         model_path,
         verbose=verbose,
         opset_version=opset_version,
+        do_constant_folding=True,
+        export_params=True,
         input_names=model.export_input_names(),
         output_names=model.export_output_names(),
-        dynamic_axes=None # model.export_dynamic_axes(),
+        dynamic_axes=model.export_dynamic_axes() if is_dyamic else None,
     )
 
     if quantize:

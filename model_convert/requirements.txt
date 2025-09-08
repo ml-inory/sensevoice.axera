@@ -1,7 +1,7 @@
 --find-links https://download.pytorch.org/whl/torch_stable.html
 
-torch==2.3+cpu
-torchaudio==2.3+cpu
+torch==2.6
+torchaudio==2.6
 modelscope
 huggingface
 huggingface_hub

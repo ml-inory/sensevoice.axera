@@ -26,49 +26,33 @@ def sequence_mask(lengths, maxlen=None, dtype=np.float32):
     # 返回指定数据类型的掩码
     return mask.astype(dtype)[None, ...]
     
-def unique_consecutive_np(x, dim=None, return_inverse=False, return_counts=False):
-    if dim is None:
-        # 默认情况，展平后去重
-        x_flat = x.ravel()
-        mask = np.concatenate(([True], x_flat[1:] != x_flat[:-1]))
-        unique_data = x_flat[mask]
-    else:
-        # 沿着指定维度去重
-        axis = dim if dim >= 0 else x.ndim + dim
-        if axis >= x.ndim:
-            raise ValueError(f"dim {dim} is out of range for array of dimension {x.ndim}")
-        
-        # 使用 np.diff 检查相邻元素是否相同
-        mask = np.ones(x.shape[axis], dtype=bool)
-        if x.shape[axis] > 1:
-            # 比较当前元素和前一个元素是否不同
-            diff = np.diff(x, axis=axis)
-            mask[1:] = np.any(diff != 0, axis=tuple(range(diff.ndim))[axis:])
-        
-        # 使用 mask 索引提取唯一元素
-        unique_data = np.take(x, np.where(mask)[0], axis=axis)
+def unique_consecutive_np(arr):
+    """
+    找出数组中连续的唯一值，模拟 torch.unique_consecutive(yseq, dim=-1)
     
-    # 处理 return_inverse 和 return_counts
-    results = (unique_data,)
+    参数:
+    arr: 一维numpy数组
     
-    if return_inverse:
-        if dim is None:
-            inv_idx = np.cumsum(mask) - 1
-        else:
-            inv_idx = np.cumsum(mask) - 1
-            # 需要调整形状以匹配输入
-            inv_idx = np.expand_dims(inv_idx, axis=axis)
-            inv_idx = np.broadcast_to(inv_idx, x.shape)
-        results += (inv_idx,)
+    返回:
+    unique_values: 去除连续重复值后的数组
+    """
+    if len(arr) == 0:
+        return np.array([])
     
-    if return_counts:
-        if dim is None:
-            counts = np.diff(np.where(np.concatenate((mask, [True])))[0])
-        else:
-            counts = np.diff(np.where(np.concatenate((mask, [True])))[0])
-        results += (counts,)
+    if len(arr) == 1:
+        return arr.copy()
     
-    return results[0] if len(results) == 1 else results
+    # 找出变化的位置
+    diff = np.diff(arr)
+    change_positions = np.where(diff != 0)[0] + 1
+    
+    # 添加起始位置
+    start_positions = np.concatenate(([0], change_positions))
+    
+    # 获取唯一值（每个连续段的第一个值）
+    unique_values = arr[start_positions]
+    
+    return unique_values
 
 
 def longest_common_suffix_prefix_with_tolerance(
@@ -100,7 +84,7 @@ def longest_common_suffix_prefix_with_tolerance(
     return 0
 
 class SenseVoiceAx:
-    def __init__(self, model_path, max_len=68, language="auto", use_itn=True, tokenizer=None):
+    def __init__(self, model_path, max_len=256, language="auto", use_itn=True, tokenizer=None):
         model_path_root = os.path.join(os.path.dirname(model_path), "..")
         embedding_root = os.path.join(model_path_root, "embeddings")
         self.frontend = WavFrontend(cmvn_file=f"{model_path_root}/am.mvn",
@@ -182,7 +166,7 @@ class SenseVoiceAx:
         yseq = np.argmax(x, axis=-1)
 
         # 去除连续重复元素
-        yseq = unique_consecutive_np(yseq, dim=-1)
+        yseq = unique_consecutive_np(yseq)
 
         # 创建掩码并过滤 blank_id
         mask = yseq != self.blank_id
@@ -200,7 +184,6 @@ class SenseVoiceAx:
         slice_num = int(np.ceil(feat.shape[1] / slice_len))
 
         asr_res = []
-        prev_token_int = None
         for i in range(slice_num):
             if i == 0:
                 sub_feat = feat[:, i*slice_len:(i+1)*slice_len, :]
@@ -225,16 +208,10 @@ class SenseVoiceAx:
 
             token_int = self.postprocess(ctc_logits, encoder_out_lens)
 
-            # common prefix
-            if self.padding > 0 and prev_token_int is not None:
-                # prefix_len = common_prefix_len(prev_token_int, token_int)
-                prefix_len = longest_common_suffix_prefix_with_tolerance(prev_token_int, token_int, 6)
-                common_prefix = rich_transcription_postprocess(self.tokenizer.tokens2text(token_int[:prefix_len]))
-
-                asr_res[-1] = asr_res[-1][:-len(common_prefix)]
-            prev_token_int = np.copy(token_int)
-
-            asr_res.append(self.tokenizer.tokens2text(token_int))
+            if self.tokenizer is not None:
+                asr_res.append(self.tokenizer.tokens2text(token_int))
+            else:
+                asr_res.append(token_int)
 
         return asr_res
     

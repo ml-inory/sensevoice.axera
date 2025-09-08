@@ -6,6 +6,7 @@ from print_utils import rich_transcription_postprocess, rich_print_asr_res
 from download_utils import download_model
 import logging
 import re
+import emoji
 
 
 def setup_logging():
@@ -122,7 +123,7 @@ class CommonVoiceDataset:
                 line = line.strip()
                 splits = line.split("\t")
                 audio_path = splits[1]
-                gt = splits[2]
+                gt = splits[3]
                 audio_path = os.path.join(self.voice_dir, audio_path)
                 self.data.append({"audio_path": audio_path, "gt": gt})
         
@@ -218,7 +219,8 @@ def main():
         raise ValueError(f"Unknown dataset type {dataset_type}")
 
     model_path_root = download_model("SenseVoice")
-    model_path = os.path.join(model_path_root, "sensevoice_ax650", "sensevoice.axmodel")
+    # model_path = os.path.join(model_path_root, "sensevoice_ax650", "sensevoice.axmodel")
+    model_path = "./model_convert/output_dir/model.onnx"
     bpemodel = os.path.join(model_path_root, "chn_jpn_yue_eng_ko_spectok.bpe.model")
 
     assert os.path.exists(model_path), f"model {model_path} not exist"
@@ -229,7 +231,7 @@ def main():
     logger.info(f"model_path: {model_path}")
 
     tokenizer = SentencepiecesTokenizer(bpemodel=bpemodel)
-    pipeline = SenseVoiceAx(model_path, language=language, use_itn=use_itn, tokenizer=tokenizer)
+    pipeline = SenseVoiceAx(model_path, language=language, use_itn=use_itn, tokenizer=tokenizer, max_len=256)
 
     # Iterate over dataset
     hyp = []
@@ -238,10 +240,11 @@ def main():
     all_character_num = 0
     max_data_num = max_num if max_num > 0 else len(dataset)
     for n, (audio_path, reference) in enumerate(dataset):
-        reference = remove_punctuation(reference)
+        reference = remove_punctuation(reference).lower()
 
         asr_res = pipeline.infer(audio_path, print_rtf=False)
-        hypothesis = rich_print_asr_res(asr_res, will_print=False, remove_punc=True)
+        hypothesis = rich_print_asr_res(asr_res, will_print=False, remove_punc=True).lower()
+        hypothesis = emoji.replace_emoji(hypothesis, replace='')
 
         character_error_num = min_distance(reference, hypothesis)
         character_num = len(reference)

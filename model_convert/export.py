@@ -18,11 +18,11 @@ torchaudio.set_audio_backend("sox_io")
 
 quantize = False
 force_export = True
-seq_len = 68
+seq_len = 256
 
 model_dir = "iic/SenseVoiceSmall"
-model, kwargs = SenseVoiceSmall.from_pretrained(model=model_dir, device="cpu")
-model.seq_len = seq_len
+model, kwargs = SenseVoiceSmall.from_pretrained(model=model_dir, device="cpu", seq_len=seq_len)
+print(f"model.seq_len: {model.seq_len}")
 
 embed = SinusoidalPositionEncoder()
 position_encoding = embed.get_position_encoding(torch.randn(1, seq_len, 560)).numpy()
@@ -44,6 +44,9 @@ if quantize:
 if not os.path.exists(model_file) or force_export:
     with torch.no_grad():
         del kwargs['model']
+        kwargs['max_seq_len'] = seq_len
+        kwargs['opset_version'] = 16
+        kwargs['is_dynamic'] = False
         export_dir = export_utils.export(model=rebuilt_model, **kwargs)
         print("Export model onnx to {}".format(model_file))
         

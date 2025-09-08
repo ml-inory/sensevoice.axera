@@ -51,6 +51,8 @@ def export_dynamic_axes(self):
     return {
         "speech": {0: "batch_size", 1: "feats_length"},
         "speech_lengths": {0: "batch_size"},
+        "masks": {2: "feats_length"},
+        "position_encoding": {1: "feats_length"},
         "language": {0: "batch_size"},
         "textnorm": {0: "batch_size"},
         "ctc_logits": {0: "batch_size", 1: "logits_length"},
