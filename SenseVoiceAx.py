@@ -178,7 +178,9 @@ class SenseVoiceAx:
         if language != self.language:
             self.choose_language(language)
 
+        # start = time.time()
         feat, feat_len = self.preprocess(waveform)
+        # print(f"Preprocess take {time.time() - start}s")
 
         slice_len = self.max_len - self.query_num
         slice_num = int(np.ceil(feat.shape[1] / slice_len))
@@ -201,12 +203,16 @@ class SenseVoiceAx:
                 
             masks = sequence_mask(np.array([self.max_len], dtype=np.int32), maxlen=real_len, dtype=np.float32)
 
+            # start = time.time()
             outputs = self.model.run(None, {"speech": sub_feat,
                                             "masks": masks,
                                             "position_encoding": self.position_encoding})
             ctc_logits, encoder_out_lens = outputs
+            # print(f"Run model take {time.time() - start}s")
 
+            # start = time.time()
             token_int = self.postprocess(ctc_logits, encoder_out_lens)
+            # print(f"Postprocess take {time.time() - start}s")
 
             if self.tokenizer is not None:
                 asr_res.append(self.tokenizer.tokens2text(token_int))

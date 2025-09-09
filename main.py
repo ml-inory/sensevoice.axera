@@ -19,7 +19,7 @@ def main():
     input_audio = args.input
     language = args.language
     use_itn = True # 标点符号预测
-    max_len = 68
+    max_len = 256
 
     model_path_root = download_model("SenseVoice")
     model_path = os.path.join(model_path_root, "sensevoice_ax650", "sensevoice.axmodel")
