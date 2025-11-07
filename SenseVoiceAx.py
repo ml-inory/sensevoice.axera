@@ -160,7 +160,7 @@ class SenseVoiceAx:
     
     def postprocess(self, ctc_logits, encoder_out_lens):
         # 提取数据
-        x = ctc_logits[0, :encoder_out_lens[0], :]
+        x = ctc_logits[0, 4:encoder_out_lens[0], :]
 
         # 获取最大值索引
         yseq = np.argmax(x, axis=-1)
@@ -208,6 +208,7 @@ class SenseVoiceAx:
                                             "masks": masks,
                                             "position_encoding": self.position_encoding})
             ctc_logits, encoder_out_lens = outputs
+            # print(f"ctc_logits.shape: {ctc_logits.shape}")
             # print(f"Run model take {time.time() - start}s")
 
             # start = time.time()
@@ -239,3 +240,36 @@ class SenseVoiceAx:
         return asr_res
 
     
+    # def stream_infer(self, audio, is_last, language="auto"):
+    #     if language != self.language:
+    #         self.choose_language(language)
+
+    #     self.fbank.accept_waveform(audio, is_last)
+    #     features = self.fbank.get_lfr_frames(
+    #         neg_mean=self.neg_mean, inv_stddev=self.inv_stddev
+    #     )
+    #     if is_last and len(features) == 0:
+    #         features = self.zeros
+
+    #     for idx, feature in enumerate(torch.unbind(torch.tensor(features), dim=0)):
+    #         is_last = is_last and idx == features.shape[0] - 1
+    #         self.caches = torch.roll(self.caches, -1, dims=0)
+    #         self.caches[-1, :] = feature
+    #         self.cur_idx += 1
+    #         cur_size = self.get_size()
+    #         if cur_size != self.chunk_size and not is_last:
+    #             continue
+    #         probs = self.inference(self.caches)[self.padding :]
+    #         if cur_size != self.chunk_size:
+    #             probs = probs[self.chunk_size - cur_size :]
+    #         if not is_last:
+    #             probs = probs[: self.chunk_size]
+    #         if self.beam_size > 1:
+    #             res = self.decoder.ctc_prefix_beam_search(
+    #                 probs, beam_size=self.beam_size, is_last=is_last
+    #             )
+    #             times_ms, text = self.decode(res["times"][0], res["tokens"][0])
+    #         else:
+    #             res = self.decoder.ctc_greedy_search(probs, is_last=is_last)
+    #             times_ms, text = self.decode(res["times"], res["tokens"])
+    #         yield {"timestamps": times_ms, "text": text}

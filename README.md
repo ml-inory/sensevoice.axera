@@ -20,6 +20,7 @@ FunASR SenseVoice on Axera, official repo: https://github.com/FunAudioLLM/SenseV
 
 ## 环境安装
 ```
+sudo apt-get install libsndfile-dev
 pip3 install -r requirements.txt
 ```
 如果空间不足可以使用 --prefix 指定别的安装路径

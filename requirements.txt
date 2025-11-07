@@ -6,3 +6,4 @@ sentencepiece
 fastapi
 gradio
 emoji
+online-fbank

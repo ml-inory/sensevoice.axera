@@ -42,13 +42,13 @@ class WavFrontend:
 
         if self.cmvn_file:
             self.cmvn = self.load_cmvn()
-        self.fbank_fn = None
+        self.fbank_fn = knf.OnlineFbank(self.opts)
         self.fbank_beg_idx = 0
         self.reset_status()
 
     def fbank(self, waveform: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         waveform = waveform * (1 << 15)
-        self.fbank_fn = knf.OnlineFbank(self.opts)
+        # self.fbank_fn = knf.OnlineFbank(self.opts)
         self.fbank_fn.accept_waveform(self.opts.frame_opts.samp_freq, waveform.tolist())
         frames = self.fbank_fn.num_frames_ready
         mat = np.empty([frames, self.opts.mel_opts.num_bins])

@@ -2,6 +2,10 @@ __pycache__
 models
 /model_convert/dataset
 /model_convert/output_dir
+/model_convert/axmodel*
 datasets
 axmodel
 test_wer.log
+/cpp/ax650n_bsp_sdk
+/cpp/build
+/cpp/install
