@@ -150,7 +150,7 @@ class WavFrontend:
 class WavFrontendOnline(WavFrontend):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        # self.fbank_fn = knf.OnlineFbank(self.opts)
+        self.fbank_fn = knf.OnlineFbank(self.opts)
         # add variables
         self.frame_sample_length = int(
             self.opts.frame_opts.frame_length_ms * self.opts.frame_opts.samp_freq / 1000
@@ -205,7 +205,7 @@ class WavFrontendOnline(WavFrontend):
         return frame_num if frame_num >= 1 and sample_length >= frame_sample_length else 0
 
     def fbank(
-        self, input: np.ndarray, input_lengths: np.ndarray
+        self, input: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         self.fbank_fn = knf.OnlineFbank(self.opts)
         batch_size = input.shape[0]
@@ -253,7 +253,7 @@ class WavFrontendOnline(WavFrontend):
             feats_pad = np.array(feats)
         self.fbanks = feats_pad
         self.fbanks_lens = copy.deepcopy(feats_lens)
-        return waveforms, feats_pad, feats_lens
+        return feats_pad, feats_lens
 
     def get_fbank(self) -> Tuple[np.ndarray, np.ndarray]:
         return self.fbanks, self.fbanks_lens

@@ -4,8 +4,12 @@ import librosa
 from frontend import WavFrontend
 import os
 import time
-from typing import Any, Dict, Iterable, List, NamedTuple, Set, Tuple, Union
-from print_utils import rich_transcription_postprocess
+from typing import List, Union
+from asr_decoder import CTCDecoder
+from tokenizer import SentencepiecesTokenizer
+from online_fbank import OnlineFbank
+import torch
+
 
 def sequence_mask(lengths, maxlen=None, dtype=np.float32):
     # 如果 maxlen 未指定，则取 lengths 中的最大值
@@ -26,6 +30,7 @@ def sequence_mask(lengths, maxlen=None, dtype=np.float32):
     # 返回指定数据类型的掩码
     return mask.astype(dtype)[None, ...]
     
+
 def unique_consecutive_np(arr):
     """
     找出数组中连续的唯一值，模拟 torch.unique_consecutive(yseq, dim=-1)
@@ -55,52 +60,54 @@ def unique_consecutive_np(arr):
     return unique_values
 
 
-def longest_common_suffix_prefix_with_tolerance(
-    lhs, 
-    rhs, 
-    tolerate: int = 0
-) -> int:
-    """
-    计算两个数组的最长公共子序列，该子序列必须同时满足：
-    - 是 lhs 的后 n 个元素（后缀）
-    - 是 rhs 的前 n 个元素（前缀）
-    并且允许最多 `tolerate` 个元素不匹配。
+class Tokenizer:
+    def __init__(self, symbol_path):
+        self.symbol_tables = {}
+        with open(symbol_path, 'r') as f:
+            i = 0
+            for line in f:
+                token = line.strip()
+                self.symbol_tables[token] = i
+                i += 1
+        
+    def tokens2text(self, token):
+        return self.symbol_tables[token]
 
-    参数:
-        lhs: np.ndarray, 第一个数组
-        rhs: np.ndarray, 第二个数组
-        tolerate: int, 允许的不匹配元素数量（默认为 0，即完全匹配）
-
-    返回:
-        int: 最长公共后缀/前缀的长度（如果没有则返回 0）
-    """
-    max_possible_n = min(len(lhs), len(rhs))
-    
-    for n in range(max_possible_n, 0, -1):
-        mismatches = np.sum(lhs[-n:] != rhs[:n])
-        if mismatches <= tolerate:
-            return n
-    
-    return 0
 
 class SenseVoiceAx:
-    def __init__(self, model_path, max_len=256, language="auto", use_itn=True, tokenizer=None):
-        model_path_root = os.path.join(os.path.dirname(model_path), "..")
-        embedding_root = os.path.join(model_path_root, "embeddings")
-        self.frontend = WavFrontend(cmvn_file=f"{model_path_root}/am.mvn",
+    def __init__(self, model_path, 
+                 max_len=256, 
+                 beam_size=3,
+                 language="auto", 
+                 hot_words=Union[List[str], None],
+                 use_itn=True, 
+                 streaming=False):
+        model_path_root = os.path.dirname(model_path)
+        emb_path = os.path.join(model_path_root, '../embeddings.npy')
+        cmvn_file = os.path.join(model_path_root, '../am.mvn')
+        bpe_model = os.path.join(model_path_root, '../chn_jpn_yue_eng_ko_spectok.bpe.model')
+        if streaming:
+            self.position_encoding = np.load(os.path.join(model_path_root, '../pe_streaming.npy'))
+        else:
+            self.position_encoding = np.load(os.path.join(model_path_root, '../pe_nonstream.npy'))
+
+        self.streaming = streaming
+        self.tokenizer = SentencepiecesTokenizer(bpemodel=bpe_model)
+
+        self.frontend = WavFrontend(cmvn_file=cmvn_file,
                                     fs=16000, 
                                     window="hamming", 
                                     n_mels=80, 
                                     frame_length=25, 
                                     frame_shift=10,
                                     lfr_m=7,
-                                    lfr_n=6,)
+                                    lfr_n=6)
         self.model = axe.InferenceSession(model_path)
         self.sample_rate = 16000
-        self.tokenizer = tokenizer
         self.blank_id = 0
         self.max_len = max_len
         self.padding = 16
+        self.input_size = 560
 
         self.lid_dict = {"auto": 0, "zh": 3, "en": 4, "yue": 7, "ja": 11, "ko": 12, "nospeech": 13}
         self.lid_int_dict = {24884: 3, 24885: 4, 24888: 7, 24892: 11, 24896: 12, 24992: 13}
@@ -108,16 +115,31 @@ class SenseVoiceAx:
         self.textnorm_int_dict = {25016: 14, 25017: 15}
         self.emo_dict = {"unk": 25009, "happy": 25001, "sad": 25002, "angry": 25003, "neutral": 25004}
 
-        self.position_encoding = np.load(f"{embedding_root}/position_encoding.npy")
-        self.language_query = np.load(f"{embedding_root}/{language}.npy")
-        self.textnorm_query = np.load(f"{embedding_root}/withitn.npy") if use_itn else np.load(f"{embedding_root}/woitn.npy")
-        self.event_emo_query = np.load(f"{embedding_root}/event_emo.npy")
-        self.input_query = np.concatenate((self.textnorm_query, self.language_query, self.event_emo_query), axis=1)
-        self.query_num = self.input_query.shape[1]
-
-        self.model_path_root = model_path_root
-        self.embedding_root = embedding_root
+        self.load_embeddings(emb_path, language, use_itn)
         self.language = language
+
+        # decoder
+        if beam_size > 1 and hot_words is not None:
+            self.beam_size = beam_size
+            symbol_table = {}
+            for i in range(self.tokenizer.get_vocab_size()):
+                symbol_table[self.tokenizer.decode(i)] = i
+            self.decoder = CTCDecoder(hot_words, symbol_table, bpe_model)
+        else:
+            self.beam_size = 1
+            self.decoder = CTCDecoder()
+
+        if streaming:
+            self.cur_idx = -1
+            self.chunk_size = max_len - self.padding
+            self.caches_shape = (max_len, self.input_size)
+            self.caches = np.zeros(self.caches_shape, dtype=np.float32)
+            self.zeros = np.zeros((1, self.input_size), dtype=np.float32)
+            self.neg_mean, self.inv_stddev = self.frontend.cmvn[0, :], self.frontend.cmvn[1, :]
+
+            self.fbank = OnlineFbank(window_type="hamming")
+            self.masks = sequence_mask(np.array([self.max_len], dtype=np.int32), maxlen=self.max_len, dtype=np.float32)
+
 
     @property
     def language_options(self):
@@ -127,15 +149,26 @@ class SenseVoiceAx:
     def textnorm_options(self):
         return list(self.textnorm_dict.keys())
     
+    def load_embeddings(self, emb_path, language, use_itn):
+        self.embeddings = np.load(emb_path, allow_pickle=True).item()
+        self.language_query = self.embeddings[language]
+        self.textnorm_query = self.embeddings['withitn'] if use_itn else self.embeddings['woitn']
+        self.event_emo_query = self.embeddings['event_emo']
+        self.input_query = np.concatenate((self.textnorm_query, self.language_query, self.event_emo_query), axis=1)
+        self.query_num = self.input_query.shape[1]
+
+    
     def choose_language(self, language):
-        self.language_query = np.load(f"{self.embedding_root}/{language}.npy")
+        self.language_query = self.embeddings[language]
         self.input_query = np.concatenate((self.textnorm_query, self.language_query, self.event_emo_query), axis=1)
         self.language = language
+
 
     def load_data(self, filepath: str) -> np.ndarray:
         waveform, _ = librosa.load(filepath, sr=self.sample_rate)
         return waveform.flatten()
     
+
     @staticmethod
     def pad_feats(feats: List[np.ndarray], max_feat_len: int) -> np.ndarray:
         def pad_feat(feat: np.ndarray, cur_len: int) -> np.ndarray:
@@ -145,6 +178,7 @@ class SenseVoiceAx:
         feat_res = [pad_feat(feat, feat.shape[0]) for feat in feats]
         feats = np.array(feat_res).astype(np.float32)
         return feats
+
 
     def preprocess(self, waveform):
         feats, feats_len = [], []
@@ -158,6 +192,7 @@ class SenseVoiceAx:
         feats_len = np.array(feats_len).astype(np.int32)
         return feats, feats_len
     
+
     def postprocess(self, ctc_logits, encoder_out_lens):
         # 提取数据
         x = ctc_logits[0, 4:encoder_out_lens[0], :]
@@ -174,6 +209,7 @@ class SenseVoiceAx:
 
         return token_int
     
+
     def infer_waveform(self, waveform: np.ndarray, language="auto"):
         if language != self.language:
             self.choose_language(language)
@@ -222,6 +258,7 @@ class SenseVoiceAx:
 
         return asr_res
     
+
     def infer(self, filepath_or_data: Union[np.ndarray, str], language="auto", print_rtf=True):
         if isinstance(filepath_or_data, str):
             waveform = self.load_data(filepath_or_data)
@@ -237,39 +274,70 @@ class SenseVoiceAx:
         if print_rtf:
             rtf = latency / total_time
             print(f"RTF: {rtf}    Latency: {latency}s  Total length: {total_time}s")
-        return asr_res
+        return "".join(asr_res)
 
+    def decode(self, times, tokens):
+        times_ms = []
+        for step, token in zip(times, tokens):
+            if len(self.tokenizer.decode(token).strip()) == 0:
+                continue
+            times_ms.append(step * 60)
+        return times_ms, self.tokenizer.decode(tokens)
+
+
+    def reset(self):
+        self.cur_idx = -1
+        self.decoder.reset()
+        self.fbank = OnlineFbank(window_type="hamming")
+        self.caches = np.zeros(self.caches_shape)
+
+
+    def get_size(self):
+        effective_size = self.cur_idx + 1 - self.padding
+        if effective_size <= 0:
+            return 0
+        return effective_size % self.chunk_size or self.chunk_size
     
-    # def stream_infer(self, audio, is_last, language="auto"):
-    #     if language != self.language:
-    #         self.choose_language(language)
 
-    #     self.fbank.accept_waveform(audio, is_last)
-    #     features = self.fbank.get_lfr_frames(
-    #         neg_mean=self.neg_mean, inv_stddev=self.inv_stddev
-    #     )
-    #     if is_last and len(features) == 0:
-    #         features = self.zeros
+    def stream_infer(self, audio, is_last, language="auto"):
+        if language != self.language:
+            self.choose_language(language)
 
-    #     for idx, feature in enumerate(torch.unbind(torch.tensor(features), dim=0)):
-    #         is_last = is_last and idx == features.shape[0] - 1
-    #         self.caches = torch.roll(self.caches, -1, dims=0)
-    #         self.caches[-1, :] = feature
-    #         self.cur_idx += 1
-    #         cur_size = self.get_size()
-    #         if cur_size != self.chunk_size and not is_last:
-    #             continue
-    #         probs = self.inference(self.caches)[self.padding :]
-    #         if cur_size != self.chunk_size:
-    #             probs = probs[self.chunk_size - cur_size :]
-    #         if not is_last:
-    #             probs = probs[: self.chunk_size]
-    #         if self.beam_size > 1:
-    #             res = self.decoder.ctc_prefix_beam_search(
-    #                 probs, beam_size=self.beam_size, is_last=is_last
-    #             )
-    #             times_ms, text = self.decode(res["times"][0], res["tokens"][0])
-    #         else:
-    #             res = self.decoder.ctc_greedy_search(probs, is_last=is_last)
-    #             times_ms, text = self.decode(res["times"], res["tokens"])
-    #         yield {"timestamps": times_ms, "text": text}
+        self.fbank.accept_waveform(audio, is_last)
+        features = self.fbank.get_lfr_frames(
+            neg_mean=self.neg_mean, inv_stddev=self.inv_stddev
+        )
+
+        if is_last and len(features) == 0:
+            features = self.zeros
+
+        for idx, feature in enumerate(features):
+            is_last = is_last and idx == features.shape[0] - 1
+            self.caches = np.roll(self.caches, -1, axis=0)
+            self.caches[-1, :] = feature
+            self.cur_idx += 1
+            cur_size = self.get_size()
+            if cur_size != self.chunk_size and not is_last:
+                continue
+
+            speech = self.caches[None, ...]
+            outputs = self.model.run(None, {"speech": speech,
+                                            "masks": self.masks,
+                                            "position_encoding": self.position_encoding})
+            ctc_logits, encoder_out_lens = outputs
+            probs = ctc_logits[0, 4:encoder_out_lens[0]]
+            probs = torch.from_numpy(probs)
+            
+            if cur_size != self.chunk_size:
+                probs = probs[self.chunk_size - cur_size :]
+            if not is_last:
+                probs = probs[: self.chunk_size]
+            if self.beam_size > 1:
+                res = self.decoder.ctc_prefix_beam_search(
+                    probs, beam_size=self.beam_size, is_last=is_last
+                )
+                times_ms, text = self.decode(res["times"][0], res["tokens"][0])
+            else:
+                res = self.decoder.ctc_greedy_search(probs, is_last=is_last)
+                times_ms, text = self.decode(res["times"], res["tokens"])
+            yield {"timestamps": times_ms, "text": text}

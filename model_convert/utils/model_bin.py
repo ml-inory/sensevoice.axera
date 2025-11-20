@@ -60,9 +60,9 @@ class SenseVoiceSmallONNX:
         else:
             model_file = os.path.join(model_dir, "model.onnx")
 
-        config_file = os.path.join(model_dir, "config.yaml")
+        # config_file = os.path.join(model_dir, "config.yaml")
         cmvn_file = os.path.join(model_dir, "am.mvn")
-        config = read_yaml(config_file)
+        # config = read_yaml(config_file)
         self.model_dir = model_dir
         # token_list = os.path.join(model_dir, "tokens.json")
         # with open(token_list, "r", encoding="utf-8") as f:
@@ -70,8 +70,15 @@ class SenseVoiceSmallONNX:
 
         # self.converter = TokenIDConverter(token_list)
         self.tokenizer = CharTokenizer()
-        config["frontend_conf"]['cmvn_file'] = cmvn_file
-        self.frontend = WavFrontend(**config["frontend_conf"])
+        # config["frontend_conf"]['cmvn_file'] = cmvn_file
+        self.frontend = WavFrontend(cmvn_file=cmvn_file,
+                                    fs=16000, 
+                                    window="hamming", 
+                                    n_mels=80, 
+                                    frame_length=25, 
+                                    frame_shift=10,
+                                    lfr_m=7,
+                                    lfr_n=6)
         self.ort_infer = OrtInferSession(
             model_file, device_id, intra_op_num_threads=intra_op_num_threads
         )
@@ -100,10 +107,11 @@ class SenseVoiceSmallONNX:
         if isinstance(wav_content, str):
             wav_name = os.path.splitext(os.path.basename(wav_content))[0]
 
-        language_query = np.load(os.path.join(self.model_dir, f"{language}.npy"))
-        textnorm_query = np.load(os.path.join(self.model_dir, "withitn.npy") if withitn 
-                                 else os.path.join(self.model_dir, "woitn.npy"))
-        event_emo_query = np.load(os.path.join(self.model_dir, "event_emo.npy"))
+        embeddings = np.load(os.path.join(self.model_dir, 'embeddings.npy'), allow_pickle=True).item()
+
+        language_query = embeddings[language]
+        textnorm_query = embeddings['withitn'] if withitn else embeddings['woitn']
+        event_emo_query = embeddings['event_emo']
 
         # textnorm language event_emo speech
         input_query = np.concatenate((textnorm_query, language_query, event_emo_query), axis=1)

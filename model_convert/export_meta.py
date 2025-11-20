@@ -31,6 +31,7 @@ def export_forward(
         encoder_out = encoder_out[0]
 
     ctc_logits = self.ctc.ctc_lo(encoder_out)
+    # ctc_logits = self.ctc.log_softmax(encoder_out)[0, 4:]
     
     return ctc_logits, encoder_out_lens
 
@@ -41,7 +42,6 @@ def export_dummy_inputs(self):
     return (speech, masks, position_encoding)
 
 def export_input_names(self):
-    # return ["speech", "speech_lengths", "language", "textnorm"]
     return ["speech", "masks", "position_encoding"]
 
 def export_output_names(self):
