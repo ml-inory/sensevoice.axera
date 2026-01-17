@@ -42,13 +42,13 @@ class WavFrontend:
 
         if self.cmvn_file:
             self.cmvn = self.load_cmvn()
-        self.fbank_fn = knf.OnlineFbank(self.opts)
+        self.fbank_fn = None
         self.fbank_beg_idx = 0
         self.reset_status()
 
     def fbank(self, waveform: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         waveform = waveform * (1 << 15)
-        # self.fbank_fn = knf.OnlineFbank(self.opts)
+        self.fbank_fn = knf.OnlineFbank(self.opts)
         self.fbank_fn.accept_waveform(self.opts.frame_opts.samp_freq, waveform.tolist())
         frames = self.fbank_fn.num_frames_ready
         mat = np.empty([frames, self.opts.mel_opts.num_bins])
@@ -96,7 +96,9 @@ class WavFrontend:
         T = T + (lfr_m - 1) // 2
         for i in range(T_lfr):
             if lfr_m <= T - i * lfr_n:
-                LFR_inputs.append((inputs[i * lfr_n : i * lfr_n + lfr_m]).reshape(1, -1))
+                LFR_inputs.append(
+                    (inputs[i * lfr_n : i * lfr_n + lfr_m]).reshape(1, -1)
+                )
             else:
                 # process last LFR frame
                 num_padding = lfr_m - (T - i * lfr_n)
@@ -150,7 +152,7 @@ class WavFrontend:
 class WavFrontendOnline(WavFrontend):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.fbank_fn = knf.OnlineFbank(self.opts)
+        # self.fbank_fn = knf.OnlineFbank(self.opts)
         # add variables
         self.frame_sample_length = int(
             self.opts.frame_opts.frame_length_ms * self.opts.frame_opts.samp_freq / 1000
@@ -180,7 +182,9 @@ class WavFrontendOnline(WavFrontend):
         splice_idx = T_lfr
         for i in range(T_lfr):
             if lfr_m <= T - i * lfr_n:
-                LFR_inputs.append((inputs[i * lfr_n : i * lfr_n + lfr_m]).reshape(1, -1))
+                LFR_inputs.append(
+                    (inputs[i * lfr_n : i * lfr_n + lfr_m]).reshape(1, -1)
+                )
             else:  # process last LFR frame
                 if is_final:
                     num_padding = lfr_m - (T - i * lfr_n)
@@ -201,11 +205,15 @@ class WavFrontendOnline(WavFrontend):
     def compute_frame_num(
         sample_length: int, frame_sample_length: int, frame_shift_sample_length: int
     ) -> int:
-        frame_num = int((sample_length - frame_sample_length) / frame_shift_sample_length + 1)
-        return frame_num if frame_num >= 1 and sample_length >= frame_sample_length else 0
+        frame_num = int(
+            (sample_length - frame_sample_length) / frame_shift_sample_length + 1
+        )
+        return (
+            frame_num if frame_num >= 1 and sample_length >= frame_sample_length else 0
+        )
 
     def fbank(
-        self, input: np.ndarray
+        self, input: np.ndarray, input_lengths: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         self.fbank_fn = knf.OnlineFbank(self.opts)
         batch_size = input.shape[0]
@@ -238,7 +246,9 @@ class WavFrontendOnline(WavFrontend):
                 )
                 waveform = waveform * (1 << 15)
 
-                self.fbank_fn.accept_waveform(self.opts.frame_opts.samp_freq, waveform.tolist())
+                self.fbank_fn.accept_waveform(
+                    self.opts.frame_opts.samp_freq, waveform.tolist()
+                )
                 frames = self.fbank_fn.num_frames_ready
                 mat = np.empty([frames, self.opts.mel_opts.num_bins])
                 for i in range(frames):
@@ -253,7 +263,7 @@ class WavFrontendOnline(WavFrontend):
             feats_pad = np.array(feats)
         self.fbanks = feats_pad
         self.fbanks_lens = copy.deepcopy(feats_lens)
-        return feats_pad, feats_lens
+        return waveforms, feats_pad, feats_lens
 
     def get_fbank(self) -> Tuple[np.ndarray, np.ndarray]:
         return self.fbanks, self.fbanks_lens
@@ -291,7 +301,9 @@ class WavFrontendOnline(WavFrontend):
         assert (
             batch_size == 1
         ), "we support to extract feature online only when the batch size is equal to 1 now"
-        waveforms, feats, feats_lengths = self.fbank(input, input_lengths)  # input shape: B T D
+        waveforms, feats, feats_lengths = self.fbank(
+            input, input_lengths
+        )  # input shape: B T D
         if feats.shape[0]:
             self.waveforms = (
                 waveforms
@@ -301,7 +313,9 @@ class WavFrontendOnline(WavFrontend):
             if not self.lfr_splice_cache:
                 for i in range(batch_size):
                     self.lfr_splice_cache.append(
-                        np.expand_dims(feats[i][0, :], axis=0).repeat((self.lfr_m - 1) // 2, axis=0)
+                        np.expand_dims(feats[i][0, :], axis=0).repeat(
+                            (self.lfr_m - 1) // 2, axis=0
+                        )
                     )
 
             if feats_lengths[0] + self.lfr_splice_cache[0].shape[0] >= self.lfr_m:
@@ -313,7 +327,9 @@ class WavFrontendOnline(WavFrontend):
                     / self.frame_shift_sample_length
                     + 1
                 )
-                minus_frame = (self.lfr_m - 1) // 2 if self.reserve_waveforms is None else 0
+                minus_frame = (
+                    (self.lfr_m - 1) // 2 if self.reserve_waveforms is None else 0
+                )
                 feats, feats_lengths, lfr_splice_frame_idxs = self.lfr_cmvn(
                     feats, feats_lengths, is_final
                 )
@@ -346,7 +362,9 @@ class WavFrontendOnline(WavFrontend):
         else:
             if is_final:
                 self.waveforms = (
-                    waveforms if self.reserve_waveforms is None else self.reserve_waveforms
+                    waveforms
+                    if self.reserve_waveforms is None
+                    else self.reserve_waveforms
                 )
                 feats = np.stack(self.lfr_splice_cache)
                 feats_lengths = np.zeros(batch_size, dtype=np.int32) + feats.shape[1]
@@ -377,20 +395,33 @@ def load_bytes(input):
     i = np.iinfo(middle_data.dtype)
     abs_max = 2 ** (i.bits - 1)
     offset = i.min + abs_max
-    array = np.frombuffer((middle_data.astype(dtype) - offset) / abs_max, dtype=np.float32)
+    array = np.frombuffer(
+        (middle_data.astype(dtype) - offset) / abs_max, dtype=np.float32
+    )
     return array
 
 
 class SinusoidalPositionEncoderOnline:
     """Streaming Positional encoding."""
 
-    def encode(self, positions: np.ndarray = None, depth: int = None, dtype: np.dtype = np.float32):
+    def encode(
+        self,
+        positions: np.ndarray = None,
+        depth: int = None,
+        dtype: np.dtype = np.float32,
+    ):
         batch_size = positions.shape[0]
         positions = positions.astype(dtype)
-        log_timescale_increment = np.log(np.array([10000], dtype=dtype)) / (depth / 2 - 1)
-        inv_timescales = np.exp(np.arange(depth / 2).astype(dtype) * (-log_timescale_increment))
+        log_timescale_increment = np.log(np.array([10000], dtype=dtype)) / (
+            depth / 2 - 1
+        )
+        inv_timescales = np.exp(
+            np.arange(depth / 2).astype(dtype) * (-log_timescale_increment)
+        )
         inv_timescales = np.reshape(inv_timescales, [batch_size, -1])
-        scaled_time = np.reshape(positions, [1, -1, 1]) * np.reshape(inv_timescales, [1, 1, -1])
+        scaled_time = np.reshape(positions, [1, -1, 1]) * np.reshape(
+            inv_timescales, [1, 1, -1]
+        )
         encoding = np.concatenate((np.sin(scaled_time), np.cos(scaled_time)), axis=2)
         return encoding.astype(dtype)
 

@@ -6,19 +6,19 @@
       "input_configs": [
         {
           "tensor_name": "speech",
-          "calibration_dataset": "./dataset/speech.tar.gz",
+          "calibration_dataset": "./calibration_dataset/speech.tar.gz",
           "calibration_format": "Numpy",
           "calibration_size": -1
         },
         {
-          "tensor_name": "masks",
-          "calibration_dataset": "./dataset/masks.tar.gz",
+          "tensor_name": "mask",
+          "calibration_dataset": "./calibration_dataset/mask.tar.gz",
           "calibration_format": "Numpy",
           "calibration_size": -1
         },
         {
-          "tensor_name": "position_encoding",
-          "calibration_dataset": "./dataset/position_encoding.tar.gz",
+          "tensor_name": "language",
+          "calibration_dataset": "./calibration_dataset/language.tar.gz",
           "calibration_format": "Numpy",
           "calibration_size": -1
         }
@@ -28,11 +28,7 @@
           "start_tensor_names": ["DEFAULT"],
           "end_tensor_names": ["DEFAULT"],
           "data_type": "U16"
-          },
-          // {
-          // "op_types": ["MatMul", "FullyConnected"],
-          // "data_type": "S16"
-          // }
+          }
       ],
       "calibration_method": "MinMax",
       "enable_smooth_quant": true,
@@ -48,12 +44,12 @@
         "src_dtype": "FP32"
       },
       {
-        "tensor_name": "masks",
-        "src_dtype": "FP32"
+        "tensor_name": "mask",
+        "src_dtype": "S32"
       },
       {
-        "tensor_name": "position_encoding",
-        "src_dtype": "FP32"
+        "tensor_name": "language",
+        "src_dtype": "S32"
       }
     ],
     "compiler": {

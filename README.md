@@ -16,14 +16,40 @@ FunASR SenseVoice on Axera, official repo: https://github.com/FunAudioLLM/SenseV
 ## 支持平台
 
 - [x] AX650N
-- [ ] AX630C
+- [x] AX630C
 
 ## 环境安装
+
+推荐在板上安装Miniconda管理虚拟环境，安装方法如下:
+```
+mkdir -p ~/miniconda3
+wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-aarch64.sh -O ~/miniconda3/miniconda.sh
+bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3
+rm ~/miniconda3/miniconda.sh
+
+source ~/miniconda3/bin/activate
+
+conda init --all
+```
+
 ```
 sudo apt-get install libsndfile-dev
-pip3 install -r requirements.txt
+
+conda create -n sensevoice python=3.12
+conda activate sensevoice
+pip install -r requirements.txt
 ```
 如果空间不足可以使用 --prefix 指定别的安装路径
+
+####  安装pyaxenigne
+
+参考 https://github.com/AXERA-TECH/pyaxengine 安装 NPU Python API
+
+在0.1.3rc2上测试通过，可通过
+```
+pip install https://github.com/AXERA-TECH/pyaxengine/releases/download/0.1.3.rc2/axengine-0.1.3-py3-none-any.whl
+```
+安装，或把版本号更改为你想使用的版本
 
 
 ## 使用
@@ -36,26 +62,28 @@ python3 main.py -i 输入音频文件
 | --- | --- | --- |
 | --input/-i | 输入音频文件 | |
 | --language/-l | 识别语言，支持auto, zh, en, yue, ja, ko | auto |
+| --streaming | 流式识别 | |
 
 
 ### 示例:  
 example下有测试音频  
 
-如 粤语测试
+如 中文测试
 ```
-python3 main.py -i example/yue.mp3
+python main.py -i example/zh.mp3
 ```
 输出
 ```
-RTF: 0.03026517820946964    Latency: 0.15689468383789062s  Total length: 5.184s
-['呢几个字。', '都表达唔到，我想讲嘅意。', '思。']
+RTF: 0.04386647134764582    Latency: 0.2463541030883789s  Total length: 5.616s
+ASR result: 开饭时间早上九点至下午五点
+
 ```
 
 ## 准确率
 
 使用WER(Word-Error-Rate)作为评价标准  
 
-**WER = 3.74%**  
+**WER = 2.0%**  
 
 ### 复现测试结果
 

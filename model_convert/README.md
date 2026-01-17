@@ -13,12 +13,18 @@ pip install -r requirements.txt
 ## 导出ONNX
 
 ```
-python export.py
+python export_onnx.py
 ```
 
-可修改export.py中的seq_len以输入模型的特征长度，目前为68  
+可传入export_onnx.py中的max_seq_len以输入模型的特征长度，目前为256    
 导出成功后生成output_dir/model.onnx
 
+
+## 导出量化数据集
+
+```
+python generate_data.py
+```
 
 ## 导出axmodel
 
