@@ -193,7 +193,7 @@ class SenseVoiceAx:
         feat, feat_len = self.preprocess(waveform)
         # print(f"Preprocess take {time.time() - start}s")
 
-        slice_len = self.max_seq_len - self.query_num
+        slice_len = self.max_seq_len
         slice_num = int(np.ceil(feat.shape[1] / slice_len))
 
         language_token = self.lid_dict[language]
