@@ -1,0 +1,10 @@
+huggingface_hub
+numpy<2
+kaldi-native-fbank
+librosa==0.9.1
+fastapi
+gradio
+online-fbank
+asr_decoder
+resampy
+soxr
