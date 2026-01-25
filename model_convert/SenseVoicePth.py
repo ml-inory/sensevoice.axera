@@ -13,6 +13,7 @@ class SenseVoicePth(torch.nn.Module):
         max_seq_len: int = 256,
         cmvn_file: str = "output_dir/am.mvn",
         token_file: str = "output_dir/tokens.txt",
+        streaming: bool = False
     ):
         super().__init__()
 
@@ -35,7 +36,10 @@ class SenseVoicePth(torch.nn.Module):
             torch.zeros(1, max_seq_len + 4, 560)
         )
 
-        wo_itn = self.orig_model.textnorm_dict["woitn"]
+        if streaming:
+            wo_itn = self.orig_model.textnorm_dict["woitn"]
+        else:
+            wo_itn = self.orig_model.textnorm_dict["withitn"]
         textnorm_query = self.orig_model.embed(torch.LongTensor([wo_itn])).unsqueeze(1)
 
         event_emo_query = self.orig_model.embed(torch.LongTensor([[1, 2]])).repeat(

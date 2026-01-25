@@ -13,3 +13,5 @@ librosa==0.9.1
 onnxruntime
 onnxslim
 kaldi_native_fbank
+online-fbank
+asr_decoder

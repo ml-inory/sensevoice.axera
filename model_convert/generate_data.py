@@ -12,6 +12,8 @@ def get_args():
     parser.add_argument("--onnx", type=str, default="output_dir/model.onnx")
     parser.add_argument("--cmvn", type=str, default="output_dir/am.mvn")
     parser.add_argument("--tokens", type=str, default="output_dir/tokens.txt")
+    parser.add_argument("--bpe_model", type=str, default="output_dir/chn_jpn_yue_eng_ko_spectok.bpe.model")
+    parser.add_argument("--streaming", action="store_true")
     parser.add_argument("--use_torch", action="store_true")
     parser.add_argument("--calib_dataset", type=str, default="calibration_dataset")
     args = parser.parse_args()
@@ -31,7 +33,7 @@ def main():
             orig_model, max_seq_len=256, cmvn_file=args.cmvn, token_file=args.tokens
         ).eval()
     else:
-        model = SenseVoiceOnnx(args.onnx, args.cmvn, args.tokens)
+        model = SenseVoiceOnnx(args.onnx, args.cmvn, args.tokens, args.bpe_model, streaming=args.streaming)
 
     en_list = ["../example/en.mp3"]
     ja_list = ["../example/ja.mp3"]
@@ -73,9 +75,13 @@ def main():
 
     for language in data_dir.keys():
         for audio_path in data_dir[language]:
-            text = model.infer(audio_path, language, save_data)
+            if args.streaming:
+                for r in model.stream_infer(audio_path, language, save_data):
+                    print(r)
+            else:
+                text = model.infer(audio_path, language, save_data)
+                print(text)
             print(audio_path)
-            print(text)
             print()
 
             data_num += 1

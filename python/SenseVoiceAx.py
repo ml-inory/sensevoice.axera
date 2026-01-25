@@ -318,7 +318,7 @@ class SenseVoiceAx:
                 },
             )
             ctc_logits, encoder_out_lens = outputs
-            probs = ctc_logits[0, 4 : encoder_out_lens[0]]
+            probs = ctc_logits[0, 4 + self.padding: encoder_out_lens[0]]
             probs = torch.from_numpy(probs)
 
             if cur_size != self.chunk_size:

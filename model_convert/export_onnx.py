@@ -17,6 +17,7 @@ def get_args():
     parser.add_argument("--output_dir", type=str, default="output_dir")
     parser.add_argument("--onnx_name", type=str, default="model.onnx")
     parser.add_argument("--opset", type=int, default=17)
+    parser.add_argument("--streaming", action="store_true")
     args = parser.parse_args()
     return args
 
@@ -75,7 +76,7 @@ def main():
         for t in tokens:
             f.write(f"{t}\n")
 
-    model = SenseVoicePth(orig_model, max_seq_len=max_seq_len).eval()
+    model = SenseVoicePth(orig_model, max_seq_len=max_seq_len, streaming=args.streaming).eval()
 
     with torch.no_grad():
         speech = torch.randn(1, args.max_seq_len, 560, dtype=torch.float32)
