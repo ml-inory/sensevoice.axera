@@ -109,8 +109,8 @@ ASR result: 开饭时间早上九点至下午五点
 
 ### C++ 源码（git submodule）
 
-C++ 源码以 git submodule 方式内置，指向 [ml-inory/ax_asr_api](https://github.com/ml-inory/ax_asr_api)
-（含 SenseVoice LFR 前端与 Python/funasr 对齐的修复、AX620Q kaldi 库目录修复）：
+C++ 源码以 git submodule 方式内置，指向官方 [AXERA-TECH/ax_asr_api](https://github.com/AXERA-TECH/ax_asr_api)
+（含已合入上游的 SenseVoice LFR 前端对齐修复与 AX620Q kaldi 库目录修复，见 [PR #10](https://github.com/AXERA-TECH/ax_asr_api/pull/10)）：
 
 ```bash
 # 克隆仓库时带上 submodule
