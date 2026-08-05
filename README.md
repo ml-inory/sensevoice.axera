@@ -107,6 +107,29 @@ ASR result: 开饭时间早上九点至下午五点
 > `models/sensevoice_ax*` 目录已含嵌套 `sensevoice/` 子目录）；在板子上运行时先
 > `export LD_LIBRARY_PATH=/opt/lib:$LD_LIBRARY_PATH`。
 
+### C++ 源码（git submodule）
+
+C++ 源码以 git submodule 方式内置，指向 [ml-inory/ax_asr_api](https://github.com/ml-inory/ax_asr_api)
+（含 SenseVoice LFR 前端与 Python/funasr 对齐的修复、AX620Q kaldi 库目录修复）：
+
+```bash
+# 克隆仓库时带上 submodule
+git clone --recursive https://github.com/ml-inory/sensevoice.axera.git
+# 已有 clone 时初始化
+git submodule update --init cpp/ax_asr_api
+```
+
+从源码重新构建三芯：
+
+```bash
+cd cpp/ax_asr_api
+./build_ax650.sh      # AX650N
+./build_ax630c.sh     # AX630C
+./build_ax620q.sh     # AX620Q (需要 arm-AX620E-linux-uclibcgnueabihf 工具链 + ax620e_bsp_sdk)
+```
+
+预编译产物（`cpp/ax650`、`cpp/ax630c`、`cpp/ax620q`）可直接使用；需要修改或重新编译时用 submodule 源码。
+
 ## 准确率
 
 使用WER(Word-Error-Rate)作为评价标准  

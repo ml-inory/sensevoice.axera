@@ -1,0 +1,3 @@
+[submodule "cpp/ax_asr_api"]
+	path = cpp/ax_asr_api
+	url = https://github.com/ml-inory/ax_asr_api.git
