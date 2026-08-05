@@ -1,0 +1,51 @@
+{
+  "model_type": "ONNX",
+  "target_hardware": "AX620E",
+  "npu_mode": "NPU1",
+  "quant": {
+    "input_configs": [
+      {
+        "tensor_name": "speech",
+        "calibration_dataset": "./calibration_dataset/speech.tar.gz",
+        "calibration_format": "Numpy",
+        "calibration_size": -1
+      },
+      {
+        "tensor_name": "mask",
+        "calibration_dataset": "./calibration_dataset/mask.tar.gz",
+        "calibration_format": "Numpy",
+        "calibration_size": -1
+      },
+      {
+        "tensor_name": "language",
+        "calibration_dataset": "./calibration_dataset/language.tar.gz",
+        "calibration_format": "Numpy",
+        "calibration_size": -1
+      }
+    ],
+    "calibration_method": "MinMax",
+    "enable_smooth_quant": true,
+    "conv_bias_data_type": "FP32",
+    "precision_analysis": true,
+    "precision_analysis_method": "EndToEnd",
+    "transformer_opt_level": 1,
+    "highest_mix_precision": false
+  },
+  "input_processors": [
+    {
+      "tensor_name": "speech",
+      "src_dtype": "FP32"
+    },
+    {
+      "tensor_name": "mask",
+      "src_dtype": "S32"
+    },
+    {
+      "tensor_name": "language",
+      "src_dtype": "S32"
+    }
+  ],
+  "compiler": {
+    "check": 0
+  }
+}

@@ -19,6 +19,15 @@ def get_args():
         default="auto",
         choices=["auto", "zh", "en", "yue", "ja", "ko"],
     )
+    parser.add_argument(
+        "--chip",
+        "-c",
+        required=False,
+        type=str,
+        default="ax650",
+        choices=["ax650", "ax630c", "ax620q"],
+        help="Target chip: ax650 / ax630c / ax620q",
+    )
     parser.add_argument("--streaming", action="store_true")
     return parser.parse_args()
 
@@ -30,7 +39,7 @@ def main():
     input_audio = args.input
     language = args.language
     model_root = download_model("SenseVoice")
-    model_root = os.path.join(model_root, "sensevoice_ax650")
+    model_root = os.path.join(model_root, f"sensevoice_{args.chip}")
     if not args.streaming:
         max_seq_len = 256
         model_path = os.path.join(model_root, "sensevoice.axmodel")

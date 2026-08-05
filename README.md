@@ -3,9 +3,10 @@ FunASR SenseVoice on Axera, official repo: https://github.com/FunAudioLLM/SenseV
 
 ## TODO
 
-- [ ] 支持AX630C
-- [ ] 支持C++
-- [ ] 支持FastAPI
+- [x] 支持AX630C
+- [x] 支持C++
+- [x] 支持FastAPI
+- [x] 支持AX620Q（AX620E NPU1）
 
 ## 功能
  - 语音识别
@@ -17,6 +18,7 @@ FunASR SenseVoice on Axera, official repo: https://github.com/FunAudioLLM/SenseV
 
 - [x] AX650N
 - [x] AX630C
+- [x] AX620Q（AXera Pi Zero / AX620E NPU1）
 
 ## 环境安装
 
@@ -54,16 +56,25 @@ pip install https://github.com/AXERA-TECH/pyaxengine/releases/download/0.1.3.rc2
 
 ## 使用
 ```
-# 首次运行会自动从huggingface上下载模型, 保存到models中
-python3 main.py -i 输入音频文件
+# 首次运行会自动从 huggingface 下载模型, 保存到 models/ 中
+# 指定芯片: --chip ax650 (默认) / ax630c / ax620q
+python3 main.py -i 输入音频文件 --chip ax650
+python3 main.py -i 输入音频文件 --chip ax630c
+python3 main.py -i 输入音频文件 --chip ax620q
 ```
 运行参数说明:  
 | 参数名称 | 说明 | 默认值 |
 | --- | --- | --- |
 | --input/-i | 输入音频文件 | |
 | --language/-l | 识别语言，支持auto, zh, en, yue, ja, ko | auto |
+| --chip/-c | 目标芯片：ax650 / ax630c / ax620q | ax650 |
 | --streaming | 流式识别 | |
 
+
+也可以直接下载三芯预编译模型到 models/：
+```
+./download_models.sh
+```
 
 ### 示例:  
 example下有测试音频  
@@ -78,6 +89,23 @@ RTF: 0.04386647134764582    Latency: 0.2463541030883789s  Total length: 5.616s
 ASR result: 开饭时间早上九点至下午五点
 
 ```
+
+## C++ (AX650N / AX630C / AX620Q)
+
+预编译产物在各芯片目录下，模型目录需为 `models/sensevoice/` 结构：
+
+```bash
+# AX650N
+./cpp/ax650/test_sensevoice -a example/zh.mp3 -p models/sensevoice_ax650
+# AX630C
+./cpp/ax630c/test_sensevoice -a example/zh.mp3 -p models/sensevoice_ax630c
+# AX620Q (AXera Pi Zero, uclibc 静态库 + 可执行文件)
+./cpp/ax620q/test_sensevoice -a example/zh.mp3 -p models/sensevoice_ax620q
+```
+
+> 说明：`-p` 指向的目录内需为 `sensevoice/sensevoice.axmodel` 结构（`download_models.sh` 下载的
+> `models/sensevoice_ax*` 目录已含嵌套 `sensevoice/` 子目录）；在板子上运行时先
+> `export LD_LIBRARY_PATH=/opt/lib:$LD_LIBRARY_PATH`。
 
 ## 准确率
 
