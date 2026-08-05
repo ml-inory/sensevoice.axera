@@ -39,13 +39,12 @@ pulsar2 build --input output_dir/model.onnx --config sensevoice.json --output_di
 # AX620E NPU2（AX620Q / AXera Pi Zero / AX630C，同一 NPU）
 pulsar2 build --input output_dir/model.onnx --config pulsar2_ax620e_npu2_int8.json --output_dir axmodel/ax620e_npu2 --output_name sensevoice.axmodel
 
-# AX620E NPU1（半核模式，一般不需要）
-pulsar2 build --input output_dir/model.onnx --config pulsar2_ax620e_npu1_int8.json --output_dir axmodel/ax620e_npu1 --output_name sensevoice.axmodel
 ```
 
 运行成功后生成对应目录下的 `sensevoice.axmodel`。
 
 ## 备注
 
-- 620Q / 630C 使用 AX620E NPU2（full-core）INT8 + smooth quant 方案；NPU1 半核模式编译慢且性能差，不推荐。
+- 620Q / 630C 为同一颗 NPU，统一使用 AX620E NPU2（full-core）INT8 + smooth quant 方案。
+- AX620E NPU1（半核）方案已废弃，不再提供。
 - 模型目录结构需为 `sensevoice_<chip>/sensevoice.axmodel`（650/630C/620Q），见根目录 `download_models.sh`。

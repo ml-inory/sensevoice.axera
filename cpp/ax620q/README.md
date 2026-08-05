@@ -1,4 +1,4 @@
-# AX620Q (AX620E, NPU1) C++ SDK
+# AX620Q (AX620E, NPU2) C++ SDK
 
 预编译产物（ARM 32-bit uclibc，AXera Pi Zero / AX620Q）：
 
@@ -10,7 +10,7 @@
 
 ```
 models/sensevoice/
-├── sensevoice.axmodel   # AX620E NPU1 INT8 (292MB)
+├── sensevoice.axmodel   # AX620E NPU2 INT8（与 AX630C 同一模型）
 ├── am.mvn
 ├── tokens.txt
 └── chn_jpn_yue_eng_ko_spectok.bpe.model
