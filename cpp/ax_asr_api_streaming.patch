@@ -1,0 +1,380 @@
+diff --git a/cpp/main.cpp b/cpp/main.cpp
+index 2d9f4ed..d422396 100644
+--- a/cpp/main.cpp
++++ b/cpp/main.cpp
+@@ -1,5 +1,6 @@
+ #include <stdio.h>
+ #include <map>
++#include <algorithm>
+ #include "utils/cmdline.hpp"
+ #include "utils/timer.hpp"
+ #include "utils/AudioLoader.hpp"
+@@ -30,6 +31,7 @@ int main(int argc, char** argv) {
+     cmd.add<std::string>("model_path", 'p', "model path which contains axmodel", false, "./models-ax630c");
+ #endif
+     cmd.add<std::string>("language", 'l', "en, zh", false, "zh");
++    cmd.add("streaming", 's', "streaming mode: feed audio in 100ms chunks");
+     cmd.parse_check(argc, argv);
+ 
+     // 0. get app args, can be removed from user's app
+@@ -67,6 +69,37 @@ int main(int argc, char** argv) {
+ 
+     printf("Init asr: %s success, take %.4fseconds\n", model_type_key.c_str(), timer.elapsed<std::chrono::seconds>());
+ 
++    if (cmd.exist("streaming")) {
++        if (0 != AX_ASR_StreamInit(handle)) {
++            printf("AX_ASR_StreamInit failed!\n");
++            AX_ASR_Uninit(handle);
++            return -1;
++        }
++        const std::vector<float>& pcm = audio_loader.samples;
++        int step = 1600; // 0.1s @ 16kHz
++        timer.start();
++        int fed = 0;
++        for (size_t i = 0; i < pcm.size(); i += step) {
++            size_t n = std::min((size_t)step, pcm.size() - i);
++            AX_ASR_StreamFeed(handle, const_cast<float*>(pcm.data() + i), (int)n, 16000);
++            fed += (int)n;
++            const char* partial = nullptr;
++            if (0 == AX_ASR_StreamResult(handle, &partial) && partial) {
++                printf("[%6.2fs] %s\n", fed / 16000.f, partial);
++            }
++        }
++        AX_ASR_StreamFinish(handle);
++        const char* partial = nullptr;
++        if (0 == AX_ASR_StreamResult(handle, &partial) && partial) {
++            printf("[FINAL] %s\n", partial);
++        }
++        timer.stop();
++        float inference_time = timer.elapsed<std::chrono::seconds>();
++        printf("RTF(%.2f / %.2f) = %.4f\n", inference_time, duration, inference_time / duration);
++        AX_ASR_Uninit(handle);
++        return 0;
++    }
++
+     // Run
+     timer.start();
+     char* result;
+@@ -84,4 +117,4 @@ int main(int argc, char** argv) {
+     AX_ASR_Free(result);
+     AX_ASR_Uninit(handle);
+     return 0;
+-}
+\ No newline at end of file
++}
+diff --git a/cpp/src/api/ax_asr_api.cpp b/cpp/src/api/ax_asr_api.cpp
+index 051e998..9af5963 100644
+--- a/cpp/src/api/ax_asr_api.cpp
++++ b/cpp/src/api/ax_asr_api.cpp
+@@ -239,6 +239,13 @@ AX_ASR_API int AX_ASR_StreamResult(AX_ASR_HANDLE handle, const char** result) {
+     return AX_ASR_SUCCESS;
+ }
+ 
++AX_ASR_API int AX_ASR_StreamFinish(AX_ASR_HANDLE handle) {
++    if (!handle) return AX_ASR_ERR_INVALID_ARGUMENT;
++    auto interface = static_cast<ASRInterface*>(handle);
++    interface->stream_finish();
++    return AX_ASR_SUCCESS;
++}
++
+ AX_ASR_API int AX_ASR_StreamReset(AX_ASR_HANDLE handle) {
+     if (!handle) return AX_ASR_ERR_INVALID_ARGUMENT;
+     auto interface = static_cast<ASRInterface*>(handle);
+diff --git a/cpp/src/api/ax_asr_api.h b/cpp/src/api/ax_asr_api.h
+index 9f87637..912bafc 100644
+--- a/cpp/src/api/ax_asr_api.h
++++ b/cpp/src/api/ax_asr_api.h
+@@ -159,6 +159,12 @@ AX_ASR_API int AX_ASR_StreamFeed(AX_ASR_HANDLE handle,
+  */
+ AX_ASR_API int AX_ASR_StreamResult(AX_ASR_HANDLE handle, const char** result);
+ 
++/**
++ * @brief Flush the remaining streaming tail (dedicated streaming model only).
++ * Call this after feeding all audio to get the final partial result.
++ */
++AX_ASR_API int AX_ASR_StreamFinish(AX_ASR_HANDLE handle);
++
+ /**
+  * @brief Reset streaming state (equivalent to StreamInit).
+  */
+diff --git a/cpp/src/asr/asr_interface.hpp b/cpp/src/asr/asr_interface.hpp
+index 2abc863..75a0b9a 100644
+--- a/cpp/src/asr/asr_interface.hpp
++++ b/cpp/src/asr/asr_interface.hpp
+@@ -25,5 +25,6 @@ public:
+     virtual void stream_init() {}
+     virtual void stream_feed(const std::vector<float>& pcm_chunk, int sample_rate) {}
+     virtual bool stream_result(std::string& partial_text) { return false; }
++    virtual void stream_finish() {}
+     virtual void stream_reset() {}
+-};
+\ No newline at end of file
++};
+diff --git a/cpp/src/asr/sensevoice.cpp b/cpp/src/asr/sensevoice.cpp
+index db41248..9d30e3b 100644
+--- a/cpp/src/asr/sensevoice.cpp
++++ b/cpp/src/asr/sensevoice.cpp
+@@ -59,6 +59,23 @@ public:
+         vocab_size_ = output_shape[2];
+         ctc_logits_.resize(output_shape[1] * vocab_size_);
+ 
++        // 尝试加载专用流式模型 (streaming_sensevoice.axmodel, 26 帧滚动窗口)
++        std::string stream_model_path = model_path + "/streaming_sensevoice.axmodel";
++        if (0 == stream_encoder_.load_model(stream_model_path.c_str())) {
++            stream_use_dedicated_ = true;
++            auto si = stream_encoder_.get_input_shape(0);
++            stream_max_len_ = (int)si[1];
++            feature_dim_ = (int)si[2];
++            stream_chunk_size_ = stream_max_len_ - padding_;
++            stream_caches_.assign((size_t)stream_max_len_ * feature_dim_, 0.0f);
++            stream_mask_all_.assign((size_t)stream_max_len_ + query_num_, 1);
++            auto so = stream_encoder_.get_output_shape(0);
++            stream_ctc_.assign((size_t)so[1] * so[2], 0.0f);
++            ALOGI("streaming model loaded: %s, max_seq_len=%d", stream_model_path.c_str(), stream_max_len_);
++        } else {
++            ALOGI("streaming model not found (%s), use chunked non-streaming fallback", stream_model_path.c_str());
++        }
++
+         init_fbank_();
+ 
+         if (!load_tokens_(token_path)) {
+@@ -167,6 +184,10 @@ private:
+         opts.mel_opts.low_freq = 20;
+         opts.mel_opts.is_librosa = false;
+ 
++        fbank_opts_ = opts;
++        stream_fbank_opts_ = opts;
++        stream_fbank_opts_.frame_opts.snip_edges = false; // 与 Python online-fbank 默认一致
++        stream_fbank_opts_.frame_opts.dither = 0.0f;      // online-fbank 默认 dither=0
+         fbank_ = std::make_unique<knf::OnlineFbank>(opts);
+ 
+         neg_mean_ = std::vector<float>{
+@@ -326,6 +347,8 @@ private:
+     int sample_rate_;
+     int n_mels_;
+     std::unique_ptr<knf::OnlineFbank> fbank_;
++    knf::FbankOptions fbank_opts_;
++    knf::FbankOptions stream_fbank_opts_;
+     int lfr_window_size_, lfr_window_shift_;
+     std::vector<float> neg_mean_, inv_stddev_;
+     std::vector<int> mask_;
+@@ -347,17 +370,38 @@ private:
+     std::vector<std::string> tokens_;
+ 
+     // ---- Streaming state ----
+-    std::vector<float> stream_features_;   // accumulated fbank features
+-    int stream_total_frames_ = 0;          // total frames accumulated
++    std::vector<float> stream_features_;   // accumulated LFR features
++    int stream_total_frames_ = 0;          // total LFR frames accumulated
+     std::string stream_partial_text_;      // latest partial result
+     std::mutex stream_mutex_;
+ 
++    // ---- Dedicated streaming model (streaming_sensevoice.axmodel) ----
++    AxModelRunner stream_encoder_;
++    bool stream_use_dedicated_ = false;
++    int stream_max_len_ = 26;              // streaming model input length
++    int stream_chunk_size_ = 10;           // max_len - padding (每 10 帧一推)
++    std::vector<float> stream_caches_;     // rolling window (max_len*560)
++    std::vector<int> stream_mask_all_;     // all-ones mask (1,1,max_len+4)
++    std::vector<float> stream_ctc_;        // output buffer
++    int stream_encoder_out_lens_ = 0;
++    int stream_last_token_ = -1;           // cross-window dedup
++    int stream_window_start_ = 0;          // next window start (0,10,20,...)
++    std::vector<float> stream_wave_buf_;   // accumulated int16 waveform
++    int stream_lfr_consumed_ = 0;          // consumed LFR frames
++
+     void stream_init(void) {
+         std::lock_guard<std::mutex> lock(stream_mutex_);
+         init_fbank_();
+         stream_features_.clear();
+         stream_total_frames_ = 0;
+         stream_partial_text_.clear();
++        if (stream_use_dedicated_) {
++            stream_wave_buf_.clear();
++            stream_lfr_consumed_ = 0;
++            stream_last_token_ = -1;
++            stream_window_start_ = 0;
++            std::fill(stream_caches_.begin(), stream_caches_.end(), 0.0f);
++        }
+     }
+ 
+     void stream_feed(const std::vector<float>& pcm_chunk, int sample_rate) {
+@@ -369,19 +413,123 @@ private:
+         for (size_t i = 0; i < resampled.size(); ++i)
+             buf_int16[i] = resampled[i] * 32768.0f;
+ 
+-        // Feed to fbank (accumulating)
+-        std::vector<float> chunk_feats;
+-        int chunk_feat_len = 0;
+-        preprocess_(buf_int16, true, chunk_feats, chunk_feat_len);
++        if (stream_use_dedicated_) {
++            feed_streaming_model_(buf_int16);
++        } else {
++            std::vector<float> chunk_feats;
++            int chunk_feat_len = 0;
++            preprocess_(buf_int16, true, chunk_feats, chunk_feat_len);
++            if (chunk_feat_len <= 0) return;
++            std::lock_guard<std::mutex> lock(stream_mutex_);
++            stream_features_.insert(stream_features_.end(), chunk_feats.begin(), chunk_feats.end());
++            stream_total_frames_ += chunk_feat_len;
++            run_stream_inference_();
++        }
++    }
++
++    // 专用流式模型路径：整段波形重算 fbank→LFR→固定 CMVN，
++    // 滚动 26 帧窗口，每 10 帧一推（与 Python streaming 对齐）。
++    void feed_streaming_model_(const std::vector<float>& buf_int16) {
++        std::lock_guard<std::mutex> lock(stream_mutex_);
++        stream_wave_buf_.insert(stream_wave_buf_.end(), buf_int16.begin(), buf_int16.end());
++
++        knf::OnlineFbank fb(stream_fbank_opts_);
++        fb.AcceptWaveform(sample_rate_, stream_wave_buf_.data(), stream_wave_buf_.size());
++        fb.InputFinished();
++        int32_t n = fb.NumFramesReady();
++        std::vector<float> raw((size_t)n * n_mels_);
++        for (int32_t i = 0; i < n; ++i) {
++            const float* f = fb.GetFrame(i);
++            std::copy(f, f + n_mels_, raw.data() + (size_t)i * n_mels_);
++        }
++        // 流式 LFR: 无左 padding, 每窗 7 帧、步长 6 (与 Python online-fbank 对齐)
++        std::vector<float> feats;
++        {
++            int32_t n_frames = n;
++            if (n_frames >= lfr_window_size_) {
++                int32_t out_num = (n_frames - lfr_window_size_) / lfr_window_shift_ + 1;
++                feats.resize((size_t)out_num * n_mels_ * lfr_window_size_);
++                for (int32_t i = 0; i < out_num; ++i) {
++                    float* p_out = feats.data() + (size_t)i * n_mels_ * lfr_window_size_;
++                    const float* p_in = raw.data() + (size_t)(i * lfr_window_shift_) * n_mels_;
++                    std::copy(p_in, p_in + (size_t)lfr_window_size_ * n_mels_, p_out);
++                }
++            }
++        }
++        apply_cmvn_(&feats);
++        int lfr_total = (int)(feats.size() / feature_dim_);
++
++        for (int i = stream_lfr_consumed_; i < lfr_total; ++i) {
++            stream_features_.insert(stream_features_.end(),
++                feats.begin() + (size_t)i * feature_dim_,
++                feats.begin() + (size_t)(i + 1) * feature_dim_);
++        }
++        stream_lfr_consumed_ = lfr_total;
++        stream_total_frames_ = lfr_total;
++
++        run_stream_windows_(false);
++    }
++
++    void run_stream_windows_(bool is_final) {
++        if (stream_total_frames_ == 0) return;
++        if (!is_final) {
++            while (stream_total_frames_ >= stream_window_start_ + stream_max_len_) {
++                run_stream_window_(stream_window_start_, false);
++                stream_window_start_ += stream_chunk_size_;
++            }
++        } else {
++            int s = stream_window_start_;
++            if (s >= stream_total_frames_) return;
++            run_stream_window_(s, true);
++            stream_window_start_ = stream_total_frames_;
++        }
++    }
++
++    void run_stream_window_(int start, bool is_final) {
++        std::fill(stream_caches_.begin(), stream_caches_.end(), 0.0f);
++        int avail = std::min(stream_max_len_, stream_total_frames_ - start);
++        if (avail > 0) {
++            memcpy(stream_caches_.data(),
++                   stream_features_.data() + (size_t)start * feature_dim_,
++                   (size_t)avail * feature_dim_ * sizeof(float));
++        }
++        int lang_token = 0; // auto
++        stream_encoder_.set_input(0, stream_caches_.data());
++        stream_encoder_.set_input(1, stream_mask_all_.data());
++        stream_encoder_.set_input(2, &lang_token);
++        if (0 != stream_encoder_.run()) return;
++        stream_encoder_.get_output(0, stream_ctc_.data());
++        stream_encoder_.get_output(1, &stream_encoder_out_lens_);
++
++        int len = stream_encoder_out_lens_;
++        if (len <= 4) return;
++        // 与 Python 对齐: 非收尾窗口只解码前 chunk_size 行 (新到帧), 收尾窗口解码全部
++        int row_end = is_final ? len : std::min(len, 4 + stream_chunk_size_);
++        for (int i = 4; i < row_end; ++i) {
++            const float* row = stream_ctc_.data() + (size_t)i * vocab_size_;
++            auto it = std::max_element(row, row + vocab_size_);
++            int tok = (int)std::distance(row, it);
++            if (tok == 0 || tok == stream_last_token_) continue;
++            stream_last_token_ = tok;
++            if (tok < (int)tokens_.size())
++                stream_partial_text_.append(tokens_[tok]);
++        }
++    }
+ 
+-        if (chunk_feat_len <= 0) return;
++    bool stream_result(std::string& partial_text) {
++        std::lock_guard<std::mutex> lock(stream_mutex_);
++        if (stream_partial_text_.empty()) return false;
++        partial_text = stream_partial_text_;
++        return true;
++    }
+ 
++    void stream_finish() {
+         std::lock_guard<std::mutex> lock(stream_mutex_);
+-        stream_features_.insert(stream_features_.end(), chunk_feats.begin(), chunk_feats.end());
+-        stream_total_frames_ += chunk_feat_len;
++        if (stream_use_dedicated_) run_stream_windows_(true); // flush tail
++    }
+ 
+-        // Run CTC inference on accumulated features (sliding window)
+-        run_stream_inference_();
++    void stream_reset(void) {
++        stream_init();
+     }
+ 
+     void run_stream_inference_(void) {
+@@ -434,17 +582,6 @@ private:
+                 stream_partial_text_.append(tokens_[i]);
+         }
+     }
+-
+-    bool stream_result(std::string& partial_text) {
+-        std::lock_guard<std::mutex> lock(stream_mutex_);
+-        if (stream_partial_text_.empty()) return false;
+-        partial_text = stream_partial_text_;
+-        return true;
+-    }
+-
+-    void stream_reset(void) {
+-        stream_init();
+-    }
+ };
+ 
+ Sensevoice::Sensevoice():
+@@ -480,6 +617,10 @@ bool Sensevoice::stream_result(std::string& partial_text) {
+     return impl_->stream_result(partial_text);
+ }
+ 
++void Sensevoice::stream_finish() {
++    impl_->stream_finish();
++}
++
+ void Sensevoice::stream_reset() {
+     impl_->stream_reset();
+ }
+diff --git a/cpp/src/asr/sensevoice.hpp b/cpp/src/asr/sensevoice.hpp
+index 3c18f68..f9d3a91 100644
+--- a/cpp/src/asr/sensevoice.hpp
++++ b/cpp/src/asr/sensevoice.hpp
+@@ -25,9 +25,10 @@ public:
+     void stream_init();
+     void stream_feed(const std::vector<float>& pcm_chunk, int sample_rate);
+     bool stream_result(std::string& partial_text);
++    void stream_finish();
+     void stream_reset();
+ 
+ private:    
+     class Impl;
+     std::unique_ptr<Impl> impl_;    
+-};
+\ No newline at end of file
++};

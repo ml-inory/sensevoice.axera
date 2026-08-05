@@ -150,6 +150,24 @@ cd cpp/ax_asr_api
 ./build_ax620q.sh   # 产物: install/ax620q/main + install/ax620q/asr_server
 ```
 
+### 流式识别（C++）
+
+预编译产物已支持**专用流式模型**（`streaming_sensevoice.axmodel`，26 帧滚动窗口、每 10 帧一推，与 Python 流式对齐）。
+模型目录需同时包含 `sensevoice.axmodel` 与 `streaming_sensevoice.axmodel`。
+
+```bash
+# 命令行演示（-s 流式模式，100ms 步长喂音频并打印增量结果）
+./cpp/ax650/test_sensevoice -a example/zh.mp3 -t sensevoice -p models/sensevoice_ax650 -s
+
+# 库 API
+AX_ASR_StreamInit(handle);                       // 初始化流式状态
+AX_ASR_StreamFeed(handle, pcm, n, 16000);        // 喂音频（float [-1,1]）
+AX_ASR_StreamResult(handle, &text);              // 获取当前增量结果
+AX_ASR_StreamFinish(handle);                     // 喂完后收尾刷新
+```
+
+源码改动见 `cpp/ax_asr_api_streaming.patch`（应用到 submodule 后可从源码复现构建）。
+
 ## 准确率
 
 使用WER(Word-Error-Rate)作为评价标准  

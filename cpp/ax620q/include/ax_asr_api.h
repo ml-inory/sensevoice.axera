@@ -160,6 +160,12 @@ AX_ASR_API int AX_ASR_StreamFeed(AX_ASR_HANDLE handle,
 AX_ASR_API int AX_ASR_StreamResult(AX_ASR_HANDLE handle, const char** result);
 
 /**
+ * @brief Flush the remaining streaming tail (dedicated streaming model only).
+ * Call this after feeding all audio to get the final partial result.
+ */
+AX_ASR_API int AX_ASR_StreamFinish(AX_ASR_HANDLE handle);
+
+/**
  * @brief Reset streaming state (equivalent to StreamInit).
  */
 AX_ASR_API int AX_ASR_StreamReset(AX_ASR_HANDLE handle);
