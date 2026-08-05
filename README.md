@@ -130,6 +130,26 @@ cd cpp/ax_asr_api
 
 预编译产物（`cpp/ax650`、`cpp/ax630c`、`cpp/ax620q`）可直接使用；需要修改或重新编译时用 submodule 源码。
 
+### ASR 服务（asr_server）源码与编译
+
+`asr_server`（FastAPI 风格 ASR HTTP 服务）预编译产物在三芯目录下：
+
+```bash
+./cpp/ax650/asr_server   # AX650N
+./cpp/ax630c/asr_server  # AX630C
+./cpp/ax620q/asr_server  # AX620Q（arm uclibc）
+```
+
+源码在 submodule 的 `cpp/ax_asr_api/cpp/server/`（`asr_server.cpp` / `asr_server.hpp` / `main.cpp` / `httplib.h`）。
+三芯的构建脚本（`build_ax650.sh` / `build_ax630c.sh` / `build_ax620q.sh`）默认同时编译 `main` 和 `asr_server`：
+
+```bash
+cd cpp/ax_asr_api
+./build_ax650.sh    # 产物: install/ax650/main + install/ax650/asr_server
+./build_ax630c.sh   # 产物: install/ax630c/main + install/ax630c/asr_server
+./build_ax620q.sh   # 产物: install/ax620q/main + install/ax620q/asr_server
+```
+
 ## 准确率
 
 使用WER(Word-Error-Rate)作为评价标准  
