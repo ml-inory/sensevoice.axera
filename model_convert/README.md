@@ -36,16 +36,16 @@ python generate_data.py
 # AX650N
 pulsar2 build --input output_dir/model.onnx --config sensevoice.json --output_dir axmodel/ax650 --output_name sensevoice.axmodel
 
-# AX620E NPU1（AX620Q / AXera Pi Zero）
-pulsar2 build --input output_dir/model.onnx --config pulsar2_ax620e_npu1_int8.json --output_dir axmodel/ax620q --output_name sensevoice.axmodel
-
-# AX620E NPU2（AX630C full-core 对比用）
+# AX620E NPU2（AX620Q / AXera Pi Zero / AX630C，同一 NPU）
 pulsar2 build --input output_dir/model.onnx --config pulsar2_ax620e_npu2_int8.json --output_dir axmodel/ax620e_npu2 --output_name sensevoice.axmodel
+
+# AX620E NPU1（半核模式，一般不需要）
+pulsar2 build --input output_dir/model.onnx --config pulsar2_ax620e_npu1_int8.json --output_dir axmodel/ax620e_npu1 --output_name sensevoice.axmodel
 ```
 
 运行成功后生成对应目录下的 `sensevoice.axmodel`。
 
 ## 备注
 
-- 620Q（AX620E NPU1）为 INT8 + smooth quant 方案；U16 全层配置在该目标上编译异常慢，不推荐。
+- 620Q / 630C 使用 AX620E NPU2（full-core）INT8 + smooth quant 方案；NPU1 半核模式编译慢且性能差，不推荐。
 - 模型目录结构需为 `sensevoice_<chip>/sensevoice.axmodel`（650/630C/620Q），见根目录 `download_models.sh`。

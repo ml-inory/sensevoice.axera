@@ -6,7 +6,7 @@ FunASR SenseVoice on Axera, official repo: https://github.com/FunAudioLLM/SenseV
 - [x] 支持AX630C
 - [x] 支持C++
 - [x] 支持FastAPI
-- [x] 支持AX620Q（AX620E NPU1）
+- [x] 支持AX620Q（AX620E NPU2，与 AX630C 同 NPU）
 
 ## 功能
  - 语音识别
@@ -18,7 +18,7 @@ FunASR SenseVoice on Axera, official repo: https://github.com/FunAudioLLM/SenseV
 
 - [x] AX650N
 - [x] AX630C
-- [x] AX620Q（AXera Pi Zero / AX620E NPU1）
+- [x] AX620Q（AXera Pi Zero / AX620E NPU2）
 
 ## 环境安装
 
