@@ -111,10 +111,18 @@ index 2abc863..75a0b9a 100644
 \ No newline at end of file
 +};
 diff --git a/cpp/src/asr/sensevoice.cpp b/cpp/src/asr/sensevoice.cpp
-index db41248..9d30e3b 100644
+index db41248..183017e 100644
 --- a/cpp/src/asr/sensevoice.cpp
 +++ b/cpp/src/asr/sensevoice.cpp
-@@ -59,6 +59,23 @@ public:
+@@ -15,6 +15,7 @@
+ #include <vector>
+ #include <limits>
+ #include <memory>
++#include <deque>
+ 
+ #include "asr/sensevoice.hpp"
+ #include "api/ax_asr_api.h"
+@@ -59,6 +60,23 @@ public:
          vocab_size_ = output_shape[2];
          ctc_logits_.resize(output_shape[1] * vocab_size_);
  
@@ -138,7 +146,7 @@ index db41248..9d30e3b 100644
          init_fbank_();
  
          if (!load_tokens_(token_path)) {
-@@ -167,6 +184,10 @@ private:
+@@ -167,6 +185,10 @@ private:
          opts.mel_opts.low_freq = 20;
          opts.mel_opts.is_librosa = false;
  
@@ -149,7 +157,7 @@ index db41248..9d30e3b 100644
          fbank_ = std::make_unique<knf::OnlineFbank>(opts);
  
          neg_mean_ = std::vector<float>{
-@@ -326,6 +347,8 @@ private:
+@@ -326,6 +348,8 @@ private:
      int sample_rate_;
      int n_mels_;
      std::unique_ptr<knf::OnlineFbank> fbank_;
@@ -158,7 +166,7 @@ index db41248..9d30e3b 100644
      int lfr_window_size_, lfr_window_shift_;
      std::vector<float> neg_mean_, inv_stddev_;
      std::vector<int> mask_;
-@@ -347,17 +370,38 @@ private:
+@@ -347,17 +371,44 @@ private:
      std::vector<std::string> tokens_;
  
      // ---- Streaming state ----
@@ -180,8 +188,11 @@ index db41248..9d30e3b 100644
 +    int stream_encoder_out_lens_ = 0;
 +    int stream_last_token_ = -1;           // cross-window dedup
 +    int stream_window_start_ = 0;          // next window start (0,10,20,...)
-+    std::vector<float> stream_wave_buf_;   // accumulated int16 waveform
-+    int stream_lfr_consumed_ = 0;          // consumed LFR frames
++    std::unique_ptr<knf::OnlineFbank> stream_fbank_;  // 增量 fbank
++    int stream_fbank_consumed_ = 0;                   // 已消费的 fbank 帧
++    std::deque<float> stream_raw_cache_;              // 最近若干 fbank 帧 (环形)
++    int stream_raw_total_ = 0;                        // fbank 帧总数
++    int stream_lfr_emitted_ = 0;                      // 已发射的 LFR 帧
 +
      void stream_init(void) {
          std::lock_guard<std::mutex> lock(stream_mutex_);
@@ -190,8 +201,11 @@ index db41248..9d30e3b 100644
          stream_total_frames_ = 0;
          stream_partial_text_.clear();
 +        if (stream_use_dedicated_) {
-+            stream_wave_buf_.clear();
-+            stream_lfr_consumed_ = 0;
++            stream_fbank_ = std::make_unique<knf::OnlineFbank>(stream_fbank_opts_);
++            stream_fbank_consumed_ = 0;
++            stream_raw_cache_.clear();
++            stream_raw_total_ = 0;
++            stream_lfr_emitted_ = 0;
 +            stream_last_token_ = -1;
 +            stream_window_start_ = 0;
 +            std::fill(stream_caches_.begin(), stream_caches_.end(), 0.0f);
@@ -199,7 +213,7 @@ index db41248..9d30e3b 100644
      }
  
      void stream_feed(const std::vector<float>& pcm_chunk, int sample_rate) {
-@@ -369,19 +413,123 @@ private:
+@@ -369,19 +420,124 @@ private:
          for (size_t i = 0; i < resampled.size(); ++i)
              buf_int16[i] = resampled[i] * 32768.0f;
  
@@ -221,47 +235,45 @@ index db41248..9d30e3b 100644
 +        }
 +    }
 +
-+    // 专用流式模型路径：整段波形重算 fbank→LFR→固定 CMVN，
-+    // 滚动 26 帧窗口，每 10 帧一推（与 Python streaming 对齐）。
++    // 专用流式模型路径：增量 fbank + 增量 LFR（与 Python streaming 对齐）。
 +    void feed_streaming_model_(const std::vector<float>& buf_int16) {
 +        std::lock_guard<std::mutex> lock(stream_mutex_);
-+        stream_wave_buf_.insert(stream_wave_buf_.end(), buf_int16.begin(), buf_int16.end());
-+
-+        knf::OnlineFbank fb(stream_fbank_opts_);
-+        fb.AcceptWaveform(sample_rate_, stream_wave_buf_.data(), stream_wave_buf_.size());
-+        fb.InputFinished();
-+        int32_t n = fb.NumFramesReady();
-+        std::vector<float> raw((size_t)n * n_mels_);
-+        for (int32_t i = 0; i < n; ++i) {
-+            const float* f = fb.GetFrame(i);
-+            std::copy(f, f + n_mels_, raw.data() + (size_t)i * n_mels_);
-+        }
-+        // 流式 LFR: 无左 padding, 每窗 7 帧、步长 6 (与 Python online-fbank 对齐)
-+        std::vector<float> feats;
-+        {
-+            int32_t n_frames = n;
-+            if (n_frames >= lfr_window_size_) {
-+                int32_t out_num = (n_frames - lfr_window_size_) / lfr_window_shift_ + 1;
-+                feats.resize((size_t)out_num * n_mels_ * lfr_window_size_);
-+                for (int32_t i = 0; i < out_num; ++i) {
-+                    float* p_out = feats.data() + (size_t)i * n_mels_ * lfr_window_size_;
-+                    const float* p_in = raw.data() + (size_t)(i * lfr_window_shift_) * n_mels_;
-+                    std::copy(p_in, p_in + (size_t)lfr_window_size_ * n_mels_, p_out);
-+                }
-+            }
-+        }
-+        apply_cmvn_(&feats);
-+        int lfr_total = (int)(feats.size() / feature_dim_);
-+
-+        for (int i = stream_lfr_consumed_; i < lfr_total; ++i) {
-+            stream_features_.insert(stream_features_.end(),
-+                feats.begin() + (size_t)i * feature_dim_,
-+                feats.begin() + (size_t)(i + 1) * feature_dim_);
-+        }
-+        stream_lfr_consumed_ = lfr_total;
-+        stream_total_frames_ = lfr_total;
-+
++        stream_fbank_->AcceptWaveform(sample_rate_, buf_int16.data(), buf_int16.size());
++        drain_stream_fbank_(false);
 +        run_stream_windows_(false);
++    }
++
++    // 增量拉取 fbank 帧 → 组装 LFR 帧（7 帧窗口、步长 6、无 padding）→ 固定 CMVN
++    void drain_stream_fbank_(bool final) {
++        if (final) stream_fbank_->InputFinished();
++        int32_t n = stream_fbank_->NumFramesReady();
++        for (int32_t i = stream_fbank_consumed_; i < n; ++i) {
++            const float* f = stream_fbank_->GetFrame(i);
++            stream_raw_cache_.insert(stream_raw_cache_.end(), f, f + n_mels_);
++            stream_raw_total_++;
++        }
++        stream_fbank_consumed_ = n;
++
++        // 先发射 LFR 帧（7 帧窗口、步长 6、无 padding），再裁剪缓存
++        while (stream_raw_total_ >= stream_lfr_emitted_ * lfr_window_shift_ + lfr_window_size_) {
++            int cache_total = (int)(stream_raw_cache_.size() / n_mels_);
++            int cache_skip = stream_raw_total_ - cache_total;
++            int idx = stream_lfr_emitted_ * lfr_window_shift_ - cache_skip;
++            if (idx < 0) break; // 理论不会发生
++            size_t old = stream_features_.size();
++            stream_features_.resize(old + feature_dim_);
++            float* out = stream_features_.data() + old;
++            for (int d = 0; d < feature_dim_; ++d) {
++                float v = stream_raw_cache_[(size_t)idx * n_mels_ + d];
++                out[d] = (v + neg_mean_[d]) * inv_stddev_[d];
++            }
++            stream_lfr_emitted_++;
++        }
++        // 只保留最近 16 帧 (7 窗 + 余量)
++        while ((int)stream_raw_cache_.size() > 16 * n_mels_)
++            stream_raw_cache_.erase(stream_raw_cache_.begin(), stream_raw_cache_.begin() + n_mels_);
++
++        stream_total_frames_ = stream_lfr_emitted_;
 +    }
 +
 +    void run_stream_windows_(bool is_final) {
@@ -278,7 +290,8 @@ index db41248..9d30e3b 100644
 +            stream_window_start_ = stream_total_frames_;
 +        }
 +    }
-+
+ 
+-        if (chunk_feat_len <= 0) return;
 +    void run_stream_window_(int start, bool is_final) {
 +        std::fill(stream_caches_.begin(), stream_caches_.end(), 0.0f);
 +        int avail = std::min(stream_max_len_, stream_total_frames_ - start);
@@ -310,19 +323,21 @@ index db41248..9d30e3b 100644
 +        }
 +    }
  
--        if (chunk_feat_len <= 0) return;
 +    bool stream_result(std::string& partial_text) {
-+        std::lock_guard<std::mutex> lock(stream_mutex_);
+         std::lock_guard<std::mutex> lock(stream_mutex_);
+-        stream_features_.insert(stream_features_.end(), chunk_feats.begin(), chunk_feats.end());
+-        stream_total_frames_ += chunk_feat_len;
 +        if (stream_partial_text_.empty()) return false;
 +        partial_text = stream_partial_text_;
 +        return true;
 +    }
- 
++
 +    void stream_finish() {
-         std::lock_guard<std::mutex> lock(stream_mutex_);
--        stream_features_.insert(stream_features_.end(), chunk_feats.begin(), chunk_feats.end());
--        stream_total_frames_ += chunk_feat_len;
-+        if (stream_use_dedicated_) run_stream_windows_(true); // flush tail
++        std::lock_guard<std::mutex> lock(stream_mutex_);
++        if (stream_use_dedicated_) {
++            drain_stream_fbank_(true);  // InputFinished 冲刷尾帧
++            run_stream_windows_(true);  // flush tail
++        }
 +    }
  
 -        // Run CTC inference on accumulated features (sliding window)
@@ -332,7 +347,7 @@ index db41248..9d30e3b 100644
      }
  
      void run_stream_inference_(void) {
-@@ -434,17 +582,6 @@ private:
+@@ -434,17 +590,6 @@ private:
                  stream_partial_text_.append(tokens_[i]);
          }
      }
@@ -350,7 +365,7 @@ index db41248..9d30e3b 100644
  };
  
  Sensevoice::Sensevoice():
-@@ -480,6 +617,10 @@ bool Sensevoice::stream_result(std::string& partial_text) {
+@@ -480,6 +625,10 @@ bool Sensevoice::stream_result(std::string& partial_text) {
      return impl_->stream_result(partial_text);
  }
  
